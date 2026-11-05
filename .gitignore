@@ -1,0 +1,4 @@
+# tools/package.py output
+/dist/
+__pycache__/
+node_modules/

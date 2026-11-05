@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>killer-skills — Claude Code skills for sites, repo pages and review councils</title>
+<meta name="description" content="Three Claude Code skills, each its own download: killer-design builds and screenshots websites, killer-repo rebuilds a GitHub repo page, killer-council scores work with blind reviewer agents.">
+<link rel="canonical" href="https://real-fruit-snacks.github.io/killer-skills/">
+<meta property="og:title" content="killer-skills">
+<meta property="og:description" content="Claude Code skills for sites, repo pages and review councils">
+<meta property="og:type" content="website">
+<meta property="og:url" content="https://real-fruit-snacks.github.io/killer-skills/">
+<meta property="og:image" content="https://real-fruit-snacks.github.io/killer-skills/assets/cover-dark.png">
+<meta property="og:image:width" content="1200">
+<meta property="og:image:height" content="560">
+<meta property="og:image:alt" content="install.sh in a terminal: installed killer-council, killer-design and killer-repo, 3 skills in ~/.claude/skills">
+<meta name="twitter:card" content="summary_large_image">
+<link rel="icon" href="assets/icon.svg" type="image/svg+xml">
+<link rel="icon" href="assets/favicon.ico" sizes="48x48">
+<link rel="apple-touch-icon" href="assets/apple-touch-icon.png">
+<meta name="theme-color" content="#0C0D10">
+<script>
+  // Theme before first paint: a saved choice wins, otherwise follow the OS.
+  (function () {
+    try {
+      var t = localStorage.getItem('rfs-theme');
+      if (t === 'nightshift' || t === 'dayshift') document.documentElement.setAttribute('data-theme', t);
+    } catch (e) {}
+  })();
+</script>
+<link rel="preload" href="assets/fonts/ibm-plex-sans-latin-400-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="preload" href="assets/fonts/ibm-plex-mono-latin-600-normal.woff2" as="font" type="font/woff2" crossorigin>
+<link rel="stylesheet" href="assets/rfs.css">
+<link rel="stylesheet" href="assets/site.css">
+<style>
+  .skill { display: flex; flex-direction: column; gap: 12px; }
+  .skill h3 { font-family: var(--rfs-font-mono); font-size: 16px; letter-spacing: -0.02em; margin: 0; }
+  .skill .what { color: var(--rfs-text); font-size: 14px; margin: 0; }
+  .skill dl { margin: 0; display: grid; grid-template-columns: auto 1fr; gap: 6px 12px; font-size: 13px; }
+  .skill dt { font-family: var(--rfs-font-mono); font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--rfs-mute); padding-top: 2px; }
+  .skill dd { margin: 0; color: var(--rfs-mute); }
+  .skill .actions { margin-top: auto; padding-top: 4px; }
+  .btn.primary { color: var(--rfs-on-primary); }
+  @media (hover: hover) { .btn.primary:hover { background: var(--rfs-primary-hover); border-color: var(--rfs-primary-hover); } }
+  .btn.primary:active { background: var(--rfs-primary-press); border-color: var(--rfs-primary-press); }
+  :focus-visible { outline: 2px solid var(--rfs-primary); outline-offset: 3px; }
+  pre.wrap-code, .term pre { white-space: pre-wrap; overflow-wrap: anywhere; }
+  nav a.keep { display: inline-block; padding: 6px 0; }
+  .install .pane .dl { display: flex; flex-wrap: wrap; align-items: center; gap: 10px; font-size: 13px; color: var(--rfs-mute); }
+</style>
+</head>
+<body>
+
+<header class="site">
+  <div class="wrap">
+    <a class="brand" href="https://real-fruit-snacks.github.io/" aria-label="RFS home">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/Real-Fruit-Snacks/rfs-brand/main/assets/rfs-lockup-dark.svg">
+        <img alt="RFS" src="https://raw.githubusercontent.com/Real-Fruit-Snacks/rfs-brand/main/assets/rfs-lockup-light.svg" data-lockup>
+      </picture>
+      <span class="sep" aria-hidden="true"></span>
+      <span class="name">killer-skills</span>
+    </a>
+    <nav>
+      <a href="#install">Install</a>
+      <a href="#skills">Skills</a>
+      <a href="#config">Configuration</a>
+      <a class="keep" href="https://github.com/Real-Fruit-Snacks/killer-skills">GitHub</a>
+      <button class="toggle" type="button" id="theme" aria-label="Switch between Nightshift and Dayshift"><span class="night">Nightshift</span><span class="day">Dayshift</span></button>
+    </nav>
+  </div>
+</header>
+
+<div class="hero">
+  <div class="grid-bg" aria-hidden="true"></div>
+  <div class="glow" aria-hidden="true"></div>
+  <div class="wrap">
+    <div>
+      <p class="label">Claude Code · Node.js · Python</p>
+      <h1 class="long">killer-skills</h1>
+      <p class="lead">Claude Code skills for sites, repo pages and review councils</p>
+      <p class="sub">The skills I reach for when I want a job done properly rather than quickly. Each one does the whole job, then checks its own work before handing it back.</p>
+
+      <div class="install" id="install">
+        <div class="tabs" role="tablist">
+          <button role="tab" aria-selected="true" data-pane="ps">PowerShell</button>
+          <button role="tab" aria-selected="false" data-pane="sh">sh</button>
+          <button role="tab" aria-selected="false" data-pane="zip">Download</button>
+        </div>
+        <div class="pane" data-active data-id="ps"><pre><code>irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1 | iex</code></pre><button class="copy" data-copy="irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1 | iex">Copy</button></div>
+        <div class="pane" data-id="sh"><pre><code>curl -fsSL https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.sh | sh</code></pre><button class="copy" data-copy="curl -fsSL https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.sh | sh">Copy</button></div>
+        <div class="pane" data-id="zip"><div class="dl"><a class="btn" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-skills.zip">killer-skills.zip</a><span>All three. Unzip into <code>~/.claude/skills</code>.</span></div></div>
+        <div class="foot">Installs the latest release into <code>~/.claude/skills</code> and checks every archive against its SHA256 first. To install one skill, see <a href="#skills">Skills</a>.</div>
+      </div>
+    </div>
+    <div class="term" aria-label="Example: install.sh installing three skills">
+      <div class="bar"><i></i><i></i><i></i><span>sh</span></div>
+<pre><code><span class="p">$</span> sh install.sh
+<span class="s">installed</span> killer-council
+<span class="s">installed</span> killer-design
+<span class="s">installed</span> killer-repo
+<span class="c">3 skills in ~/.claude/skills</span>
+<span class="c">open a new Claude Code session to use them</span></code></pre>
+    </div>
+  </div>
+</div>
+
+<section id="skills">
+  <div class="wrap">
+    <p class="label">Skills</p>
+    <h2>Three skills, each its own download</h2>
+    <p class="mute" style="max-width:70ch">In Claude Code, type a skill's name as a command (<code>/killer-repo</code>) or ask in plain words ("make this README better"). Every download link below always fetches the latest release.</p>
+    <div class="cards" style="margin-top:22px">
+      <div class="card skill">
+        <h3>killer-design</h3>
+        <p class="what">Designs and builds a website in hand-written HTML, CSS and a little JavaScript: landing pages, project sites, portfolios. It sets a direction from the subject, gives the first screen one wow moment, then screenshots the page at phone, tablet and desktop sizes and fixes what it sees. Makes favicons and app icons too.</p>
+        <dl><dt>Asks</dt><dd>Only what it can't find in the project</dd><dt>Needs</dt><dd>Node.js. Installs Playwright into <code>~/.cache/killer-design</code> on first use</dd></dl>
+        <div class="actions"><a class="btn primary" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-design.zip">killer-design.zip</a></div>
+      </div>
+      <div class="card skill">
+        <h3>killer-repo</h3>
+        <p class="what">Rebuilds a GitHub repo page around one wow moment that shows the project doing its most interesting true thing, plus the description, topics, social card, community files and workflows. It runs every claim, renders the README as GitHub will in light and dark at desktop and phone widths, and asks before anything public changes.</p>
+        <dl><dt>Asks</dt><dd>Scope, look, how to land the changes, whether to convene a council</dd><dt>Needs</dt><dd>Node.js and the GitHub CLI (<code>gh</code>)</dd></dl>
+        <div class="actions"><a class="btn primary" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-repo.zip">killer-repo.zip</a></div>
+      </div>
+      <div class="card skill">
+        <h3>killer-council</h3>
+        <p class="what">Runs a blind scoring council on any piece of work. Fresh agents score it from 1 to 100 with reasons, the leader fixes what they found, and the council reconvenes until the work passes a threshold the members never see. You can take a seat and get the same brief they do.</p>
+        <dl><dt>Asks</dt><dd>Threshold, members, models, your seat, rounds and extras</dd><dt>Needs</dt><dd>Python 3.10 or later</dd></dl>
+        <div class="actions"><a class="btn primary" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-council.zip">killer-council.zip</a></div>
+      </div>
+    </div>
+    <pre class="wrap-code" style="margin-top:22px"><code><span class="c"># install one skill by name, PowerShell</span>
+&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-repo
+
+<span class="c"># install one skill by name, sh</span>
+curl -fsSL https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.sh | sh -s -- killer-repo</code></pre>
+  </div>
+</section>
+
+<section id="rules">
+  <div class="wrap two">
+    <div>
+      <p class="label">House rules</p>
+      <h2>Every skill, every time</h2>
+    </div>
+    <ul class="plain">
+      <li>It looks at its own result before you do: screenshots, a rendered README, or scores from reviewers who never see the bar.</li>
+      <li>It asks only what would change the outcome. killer-council and killer-repo ask up front, with a recommended answer for each question, so there are no options to remember.</li>
+      <li>What it couldn't check, or had to assume, is listed in its handoff.</li>
+      <li>Nothing goes public without your OK.</li>
+      <li>Every archive is listed in each release's <code>SHA256SUMS.txt</code>, and the installers check it before replacing anything.</li>
+    </ul>
+  </div>
+</section>
+
+<section id="config">
+  <div class="wrap two">
+    <div>
+      <p class="label">Configuration</p>
+      <h2>Installer settings</h2>
+      <p class="mute">In PowerShell, set one with <code>$env:KILLER_SKILLS_VERSION = 'v1.0.0'</code> before the install line. In sh, put it before <code>sh</code>: <code>| KILLER_SKILLS_VERSION=v1.0.0 sh</code>.</p>
+    </div>
+    <table>
+      <tr><th>Variable</th><th>Effect</th></tr>
+      <tr><td>KILLER_SKILLS_VERSION</td><td>A release tag to install, such as <code>v1.0.0</code>. Default: the latest release</td></tr>
+      <tr><td>KILLER_SKILLS_DIR</td><td>Where to install. Default <code>~/.claude/skills</code></td></tr>
+    </table>
+  </div>
+</section>
+
+<section id="tested">
+  <div class="wrap two">
+    <div>
+      <p class="label">Tested on</p>
+      <ul class="plain">
+        <li>Windows 11 · Claude Code 2.1.316 · Node.js 24.20.0 · Python 3.14.2: each skill run on a real project</li>
+        <li>Ubuntu 24.04, Windows Server 2025 and macOS 15 in CI on every push: both installers, the packager and the council script</li>
+        <li><em>Not</em> tested: the skills themselves in Claude Code on macOS or Linux, or uploaded to claude.ai</li>
+      </ul>
+    </div>
+    <div>
+      <p class="label">Known issues</p>
+      <ul class="plain">
+        <li>The first screenshot runs <code>npm install playwright</code> and may download Chromium, so it needs a network connection.</li>
+        <li>killer-council's reviewers work in your folder, not a sandbox. <code>council.py verify</code> catches a change after each round but can't prevent one.</li>
+        <li>A council that mixes providers needs T3 Code; elsewhere it offers a mix of Claude models.</li>
+        <li>GitHub has no API for a repo's social preview, so killer-repo makes the card and tells you where to upload it.</li>
+      </ul>
+    </div>
+  </div>
+</section>
+
+<footer>
+  <div class="wrap">
+    <span>MIT · <a href="https://github.com/Real-Fruit-Snacks/killer-skills">Source</a> · <a href="https://github.com/Real-Fruit-Snacks/killer-skills/blob/main/CHANGELOG.md">Changelog</a> · <a href="https://github.com/Real-Fruit-Snacks/killer-skills/blob/main/SECURITY.md">Security</a></span>
+    <span><a href="https://real-fruit-snacks.github.io/">RFS</a> · Real tools. No filler. · <a href="https://github.com/Real-Fruit-Snacks/rfs-brand/blob/main/BRAND.md">Brand</a></span>
+  </div>
+</footer>
+
+<script src="assets/site.js"></script>
+</body>
+</html>

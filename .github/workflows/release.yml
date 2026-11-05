@@ -1,0 +1,45 @@
+# Push a tag (vX.Y.Z) to publish a release. Asset names are fixed, so these
+# URLs always fetch the newest release:
+#   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/<skill>.zip
+#   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-skills.zip
+name: release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Check the version is in CHANGELOG.md
+        run: |
+          v="${GITHUB_REF_NAME#v}"
+          grep -q "^## ${v} " CHANGELOG.md || { echo "CHANGELOG.md has no '## ${v} ' section"; exit 1; }
+          awk -v v="$v" '$0 ~ "^## "v" " {on=1; next} /^## / {on=0} on' CHANGELOG.md > notes.md
+          cat notes.md
+
+      - name: Test
+        run: |
+          python -I tests/test_council.py
+          python -I tests/test_package.py
+          python -I tests/test_install.py
+
+      - name: Pack
+        run: |
+          python -I tools/package.py --out dist
+          cat dist/SHA256SUMS.txt
+
+      - name: Publish
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh release create "$GITHUB_REF_NAME" --title "$GITHUB_REF_NAME" --notes-file notes.md --verify-tag dist/*

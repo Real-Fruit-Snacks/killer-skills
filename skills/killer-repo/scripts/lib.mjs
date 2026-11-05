@@ -1,0 +1,129 @@
+/**
+ * lib.mjs - shared helpers for the killer-repo scripts: finding or installing
+ * npm packages once (Playwright, github-markdown-css), launching Chromium, a
+ * throwaway static server, and repo lookups.
+ */
+import { createRequire } from 'node:module';
+import { pathToFileURL } from 'node:url';
+import { execSync, execFileSync } from 'node:child_process';
+import http from 'node:http';
+import fs from 'node:fs/promises';
+import { existsSync, readdirSync } from 'node:fs';
+import os from 'node:os';
+import path from 'node:path';
+
+export const CACHE = path.join(os.homedir(), '.cache', 'killer-repo');
+// Reuse a copy the project or killer-design already installed before downloading another.
+const BASES = [process.cwd(), CACHE, path.join(os.homedir(), '.cache', 'killer-design')];
+
+export function log(msg) {
+  console.error(`[killer-repo] ${msg}`);
+}
+
+/** Directory of an npm package, installing it into the cache on first use. */
+export async function packageDir(name) {
+  for (const base of BASES) {
+    const d = path.join(base, 'node_modules', name);
+    if (existsSync(path.join(d, 'package.json'))) return d;
+  }
+  await fs.mkdir(CACHE, { recursive: true });
+  const pj = path.join(CACHE, 'package.json');
+  if (!existsSync(pj)) await fs.writeFile(pj, '{ "name": "killer-repo-cache", "private": true }\n');
+  log(`installing ${name} once into ${CACHE} ...`);
+  execSync(`npm install --no-audit --no-fund --loglevel=error ${name}`, { cwd: CACHE, stdio: 'inherit' });
+  const d = path.join(CACHE, 'node_modules', name);
+  if (!existsSync(path.join(d, 'package.json'))) throw new Error(`could not install ${name}`);
+  return d;
+}
+
+export async function loadPlaywright() {
+  const dir = await packageDir('playwright');
+  const req = createRequire(path.join(dir, '..', '__resolve__.js'));
+  const mod = await import(pathToFileURL(req.resolve('playwright')).href);
+  return { pw: mod.default ?? mod, dir };
+}
+
+export async function launch({ pw, dir }) {
+  try {
+    return await pw.chromium.launch();
+  } catch (e) {
+    if (!/Executable doesn't exist|playwright install/i.test(String(e.message))) throw e;
+    log('downloading Chromium for Playwright (one-time) ...');
+    execFileSync(process.execPath, [path.join(dir, 'cli.js'), 'install', 'chromium'], { stdio: 'inherit' });
+    return await pw.chromium.launch();
+  }
+}
+
+const TYPES = {
+  '.html': 'text/html; charset=utf-8', '.css': 'text/css', '.js': 'text/javascript', '.mjs': 'text/javascript',
+  '.json': 'application/json', '.svg': 'image/svg+xml', '.png': 'image/png', '.jpg': 'image/jpeg',
+  '.jpeg': 'image/jpeg', '.gif': 'image/gif', '.webp': 'image/webp', '.avif': 'image/avif', '.apng': 'image/apng',
+  '.ico': 'image/x-icon', '.woff2': 'font/woff2', '.woff': 'font/woff', '.ttf': 'font/ttf', '.otf': 'font/otf',
+  '.mp4': 'video/mp4', '.webm': 'video/webm',
+};
+
+/** Serve `root` on 127.0.0.1; `routes` maps exact paths to generated HTML. */
+export function serve(root, routes = {}) {
+  const top = path.resolve(root);
+  const server = http.createServer(async (req, res) => {
+    const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    if (routes[url] !== undefined) {
+      res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
+      return res.end(routes[url]);
+    }
+    const file = path.resolve(path.join(top, url));
+    if (file !== top && !file.startsWith(top + path.sep)) {
+      res.writeHead(403);
+      return res.end();
+    }
+    try {
+      const data = await fs.readFile(file);
+      res.writeHead(200, { 'content-type': TYPES[path.extname(file).toLowerCase()] || 'application/octet-stream' });
+      res.end(data);
+    } catch {
+      res.writeHead(404);
+      res.end('not found');
+    }
+  });
+  return new Promise((resolve) =>
+    server.listen(0, '127.0.0.1', () => resolve({ server, origin: `http://127.0.0.1:${server.address().port}` })));
+}
+
+export function run(cmd, args, opts = {}) {
+  try {
+    return execFileSync(cmd, args, { encoding: 'utf8', stdio: ['ignore', 'pipe', 'pipe'], ...opts }).trim();
+  } catch {
+    return null;
+  }
+}
+
+export function repoRoot(dir) {
+  return run('git', ['-C', dir, 'rev-parse', '--show-toplevel']) || dir;
+}
+
+/** owner/name from --repo, gh, or the origin remote. */
+export function repoSlug(dir, given) {
+  if (given) return given;
+  const viaGh = run('gh', ['repo', 'view', '--json', 'nameWithOwner', '-q', '.nameWithOwner'], { cwd: dir });
+  if (viaGh) return viaGh;
+  const url = run('git', ['-C', dir, 'remote', 'get-url', 'origin']) || '';
+  const m = url.match(/github\.com[/:]([^/]+\/[^/.]+?)(?:\.git)?$/);
+  return m ? m[1] : null;
+}
+
+/** The README GitHub would show for a folder: .github/, then the root, then docs/. */
+export function findReadme(dir) {
+  for (const sub of ['.github', '.', 'docs']) {
+    const d = path.join(dir, sub);
+    let names = [];
+    try { names = readdirSync(d); } catch { continue; }
+    const hit = names.find((n) => /^readme(\.(md|markdown|mdown|mkd|txt|rst))?$/i.test(n));
+    if (hit) return path.join(d, hit);
+  }
+  return null;
+}
+
+export function parseSize(s, fallback) {
+  const m = String(s || '').match(/^(\d+)x(\d+)$/i);
+  return m ? { width: Number(m[1]), height: Number(m[2]) } : fallback;
+}

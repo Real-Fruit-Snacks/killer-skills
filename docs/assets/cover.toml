@@ -1,0 +1,18 @@
+# Cover + social preview. Render from ~/Projects, with rfs-brand cloned beside this repo:
+#   python3 rfs-brand/tools/make-cover.py killer-skills/docs/assets/cover.toml
+# Rules: rfs-brand BRAND.md section 7.
+
+name        = "killer-skills"
+description = "Claude Code skills for sites, repo pages and review councils"   # README line 1
+
+# install.sh's real output (tests/test_install.py runs the same thing)
+[panel]
+kind  = "terminal"
+title = "sh"
+lines = [
+  "$ sh install.sh",
+  "ok installed killer-council",
+  "ok installed killer-design",
+  "ok installed killer-repo",
+  "3 skills in ~/.claude/skills",
+]

@@ -1,0 +1,48 @@
+name: ci
+
+on:
+  push:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    name: ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - name: Versions
+        shell: bash
+        run: |
+          python --version; node --version; git --version
+          command -v pwsh >/dev/null && pwsh -NoProfile -Command '$PSVersionTable.PSVersion.ToString()' || echo "no pwsh"
+
+      - name: The skill scripts parse
+        shell: bash
+        run: |
+          for f in skills/*/scripts/*.mjs; do node --check "$f" || exit 1; done
+          python -I -c "import ast, glob, sys; [ast.parse(open(f, encoding='utf-8').read(), f) for f in glob.glob('skills/*/scripts/*.py')]"
+
+      - name: killer-council
+        run: python -I tests/test_council.py
+
+      - name: Packager
+        run: python -I tests/test_package.py
+
+      - name: Installers
+        run: python -I tests/test_install.py
