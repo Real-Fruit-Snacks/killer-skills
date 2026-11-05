@@ -114,7 +114,10 @@ try:
         out = r.stdout + r.stderr
         check(f"{label}: installs every skill", r.returncode == 0 and tree(dest) == want, out)
         check(f"{label}: says what it installed", all(f"installed {s}" in r.stdout for s in skills) and f"{len(skills)} skills in" in r.stdout, out)
-        check(f"{label}: leaves no staging folders", sorted(p.name for p in dest.iterdir()) == skills, sorted(p.name for p in dest.iterdir()))
+        check(f"{label}: leaves no staging folders", dest.is_dir() and sorted(p.name for p in dest.iterdir()) == skills,
+              sorted(p.name for p in dest.iterdir()) if dest.is_dir() else "no install folder")
+        if r.returncode != 0 or tree(dest) != want:
+            continue  # the rest builds on a good first install
 
         target = skills[-1]
         (dest / target / "stale.txt").write_text("left over from an old version")

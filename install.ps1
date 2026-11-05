@@ -39,6 +39,16 @@ function Install-KillerSkills {
     }
   }
 
+  # Hashing and unzipping go through .NET, not Get-FileHash and Expand-Archive: Windows
+  # PowerShell started from PowerShell 7 inherits 7's module path and can't load those.
+  Add-Type -AssemblyName System.IO.Compression.FileSystem
+  function Get-Sha256([string]$Path) {
+    $sha = [Security.Cryptography.SHA256]::Create()
+    $stream = [IO.File]::OpenRead($Path)
+    try { return ([BitConverter]::ToString($sha.ComputeHash($stream)) -replace '-', '').ToLowerInvariant() }
+    finally { $stream.Dispose(); $sha.Dispose() }
+  }
+
   $tmp = Join-Path ([IO.Path]::GetTempPath()) ('killer-skills-' + [guid]::NewGuid().ToString('N'))
   New-Item -ItemType Directory -Path $tmp | Out-Null
   $stage = $null
@@ -66,10 +76,9 @@ function Install-KillerSkills {
     foreach ($name in $names) {
       $zip = Join-Path $tmp "$name.zip"
       Get-File "$base/$name.zip" $zip
-      $got = (Get-FileHash -Path $zip -Algorithm SHA256).Hash.ToLowerInvariant()
-      if ($got -ne $sums["$name.zip"]) { throw "failed: $name.zip doesn't match SHA256SUMS.txt; nothing was changed for $name" }
+      if ((Get-Sha256 $zip) -ne $sums["$name.zip"]) { throw "failed: $name.zip doesn't match SHA256SUMS.txt; nothing was changed for $name" }
       $x = Join-Path $stage $name
-      Expand-Archive -Path $zip -DestinationPath $x
+      [IO.Compression.ZipFile]::ExtractToDirectory($zip, $x)
       if (-not (Test-Path -LiteralPath (Join-Path (Join-Path $x $name) 'SKILL.md'))) { throw "failed: $name.zip has no $name/SKILL.md" }
       $target = Join-Path $dest $name
       if (Test-Path -LiteralPath $target) { $verb = 'updated'; Remove-Item -LiteralPath $target -Recurse -Force } else { $verb = 'installed' }
