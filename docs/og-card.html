@@ -1,0 +1,65 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="robots" content="noindex">
+<title>killer-skills social card source</title>
+<!-- The source of assets/og.png. Render it with killer-repo:
+     node skills/killer-repo/scripts/card.mjs docs/og-card.html --size 1200x630 --scale 2 --out docs/assets/og.png -->
+<link rel="stylesheet" href="styles.css">
+<style>
+  /* the finished frame: no animation names, so every mark is drawn */
+  .proof { --a-in: none; --a-strike: none; --a-draw: none; --a-write: none; --a-thump: none; --a-land: none; }
+  html, body { width: 1200px; height: 630px; overflow: hidden; }
+  body { position: relative; }
+  .card { position: absolute; inset: 0; display: grid; grid-template-columns: 470px 1fr; gap: 40px; padding: 58px 56px 0 64px; isolation: isolate; }
+  .card::before {
+    content: ""; position: absolute; z-index: -1; inset: 0 32px; pointer-events: none;
+    background-image: repeating-linear-gradient(90deg, oklch(0.74 0.085 228 / .3) 0 1px, transparent 1px calc(100% / 12));
+  }
+  .card .wordmark { font-size: 1.6rem; padding: 0; display: block; margin-bottom: 34px; }
+  .card h1 { font-size: 4.6rem; font-weight: 800; font-stretch: 62%; line-height: .92; letter-spacing: -0.005em; }
+  .card .line { margin-top: 26px; font: 500 1.15rem / 1.45 var(--mono); color: var(--ink-muted); }
+  .card .line b { color: var(--red); font-weight: 500; }
+  .card .proof { padding-top: 22px; --proof: .8rem; }
+  .card .s1 { margin-right: 6%; }
+  .card .slug { position: absolute; left: 0; right: 0; bottom: 0; border-bottom: 0; border-top: 1px solid var(--blue); }
+</style>
+</head>
+<body>
+<div class="card">
+  <div>
+    <span class="wordmark">killer-skills</span>
+    <h1>Claude Code skills that won’t hand you the first draft.</h1>
+    <p class="line">a real council run: round 1 <b>10</b>, round 2 87</p>
+  </div>
+  <div class="proof">
+    <div class="sheet s1">
+      <p class="sheet-slug"><span>wordfreq / README.md</span><span>round 1</span></p>
+      <div class="readme">
+        <div class="ln"><span># wordfreq</span></div>
+        <div class="ln"><span>Counts words.</span></div>
+        <div class="ln gap"><span>## Install</span></div>
+        <div class="ln"><span><span class="mk strike">pip install wordfreq</span></span><span class="note">unrelated PyPI package</span></div>
+        <div class="ln gap"><span>## Usage</span></div>
+        <div class="ln"><span>python wordfreq.py <span class="mk ring">--file notes.txt --top 10<svg viewBox="0 0 100 40" preserveAspectRatio="none"><path pathLength="1" d="M8 31 C2 24 4 9 36 5 C66 1 98 5 98 19 C98 32 72 38 46 37 C22 36 2 32 2 20 C2 12 12 6 30 4"/></svg></span></span><span class="note">crashes: ValueError</span></div>
+        <div class="ln gap"><span>Shows the 10 <span class="mk under">most common<svg viewBox="0 0 100 12" preserveAspectRatio="none"><path pathLength="1" d="M1 6 Q8 1 15 6 T29 6 T43 6 T57 6 T71 6 T85 6 T99 6"/></svg></span> words,</span><span class="note">prints the least common first</span></div>
+      </div>
+      <div class="stamp red"><svg viewBox="0 0 100 100"><path pathLength="1" d="M52 6 C80 5 96 28 93 54 C90 82 64 96 40 92 C16 88 4 66 7 44 C10 20 30 7 58 9"/></svg><b>10</b><small>3 vetoes</small></div>
+    </div>
+    <div class="sheet s2">
+      <p class="sheet-slug"><span>wordfreq / README.md</span><span>round 2</span></p>
+      <div class="readme">
+        <div class="ln"><span># wordfreq</span></div>
+        <div class="ln"><span>Prints the most common words in a</span></div>
+        <div class="ln"><span>text file, each with its count.</span></div>
+        <div class="ln gap"><span>the 3</span></div>
+        <div class="ln"><span>cat 2</span></div>
+      </div>
+      <div class="stamp ink"><svg viewBox="0 0 100 100"><circle cx="50" cy="50" r="44" pathLength="1"/><circle cx="50" cy="50" r="38" pathLength="1"/></svg><b>87</b><small>passed</small></div>
+    </div>
+  </div>
+</div>
+<p class="slug"><span>killer-skills</span><span>Claude Code skills</span><span>MIT</span><span>Real-Fruit-Snacks</span><span>real-fruit-snacks.github.io/killer-skills</span></p>
+</body>
+</html>
