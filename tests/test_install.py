@@ -10,11 +10,13 @@ with Windows PowerShell and PowerShell 7, the way the README runs them
 import functools
 import http.server
 import os
+import re
 import shutil
 import subprocess
 import sys
 import tempfile
 import threading
+import time
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -30,8 +32,24 @@ def check(name, cond, detail=""):
 
 
 class Quiet(http.server.SimpleHTTPRequestHandler):
+    """Serves the release folders. /flaky-<n>/<file> answers 503 the first time, then serves good/<file>."""
+    seen = set()
+    lock = threading.Lock()
+
     def log_message(self, *a):
         pass
+
+    def do_GET(self):
+        m = re.match(r"^/flaky-\d+/(.*)$", self.path)
+        if m:
+            with Quiet.lock:
+                first = self.path not in Quiet.seen
+                Quiet.seen.add(self.path)
+            if first:
+                self.send_error(503)
+                return
+            self.path = "/good/" + m.group(1)
+        super().do_GET()
 
 
 def find_sh():
@@ -144,8 +162,17 @@ try:
         check(f"{label}: changes nothing when a checksum fails", tree(dest / victim) == before)
 
         env_none = dict(env, KILLER_SKILLS_URL=f"{url}/missing")
+        started = time.monotonic()
         r = run([], env_none)
+        took = time.monotonic() - started
         check(f"{label}: fails cleanly when the release isn't there", r.returncode != 0 and "could not download" in (r.stdout + r.stderr), r.stdout + r.stderr)
+        check(f"{label}: doesn't retry a 404", took < 15, f"took {took:.1f}s")
+
+        flaky_dest = Path(str(dest) + "-flaky")
+        env_flaky = dict(env, KILLER_SKILLS_URL=f"{url}/flaky-{abs(hash(label)) % 100000}",
+                         KILLER_SKILLS_DIR=flaky_dest.as_posix() if "sh" in label.split()[0] else str(flaky_dest))
+        r = run([], env_flaky)
+        check(f"{label}: retries through a 503 on every file", r.returncode == 0 and tree(flaky_dest) == want, r.stdout + r.stderr)
 finally:
     if server:
         server.shutdown()

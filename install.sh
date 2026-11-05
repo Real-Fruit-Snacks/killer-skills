@@ -29,7 +29,8 @@ dest=${KILLER_SKILLS_DIR:-$HOME/.claude/skills}
 fail() { printf 'failed: %s\n' "$*" >&2; exit 1; }
 
 if command -v curl >/dev/null 2>&1; then
-  fetch() { curl -fsSL --retry 3 -o "$2" "$1" || fail "could not download $1"; }
+  # --retry covers GitHub's occasional 5xx on release downloads (about 30 s of backoff)
+  fetch() { curl -fsSL --retry 5 -o "$2" "$1" || fail "could not download $1"; }
 elif command -v wget >/dev/null 2>&1; then
   fetch() { wget -q -O "$2" "$1" || fail "could not download $1"; }
 else

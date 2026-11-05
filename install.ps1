@@ -29,11 +29,14 @@ function Install-KillerSkills {
   if ($env:KILLER_SKILLS_URL) { $base = $env:KILLER_SKILLS_URL.TrimEnd('/') }   # for tests: release files served over http
   $dest = if ($env:KILLER_SKILLS_DIR) { $env:KILLER_SKILLS_DIR } else { Join-Path (Join-Path $HOME '.claude') 'skills' }
 
+  # Retries cover GitHub's occasional 5xx on release downloads; a 4xx won't change, so it fails at once.
   function Get-File([string]$Url, [string]$Path) {
     for ($try = 1; ; $try++) {
       try { Invoke-WebRequest -Uri $Url -OutFile $Path -UseBasicParsing; return }
       catch {
-        if ($try -ge 3) { throw "failed: could not download ${Url}: $($_.Exception.Message)" }
+        $code = 0
+        if ($_.Exception.Response) { $code = [int]$_.Exception.Response.StatusCode }
+        if ($try -ge 5 -or ($code -ge 400 -and $code -lt 500)) { throw "failed: could not download ${Url}: $($_.Exception.Message)" }
         Start-Sleep -Seconds (2 * $try)
       }
     }
