@@ -59,13 +59,18 @@ for (let i = 0; i < argv.length; i++) {
 }
 
 // ---------- playwright ----------
-const CACHE = path.join(os.homedir(), '.cache', 'killer-design');
+const CACHE = path.join(process.env.KILLER_SKILLS_CACHE || path.join(os.homedir(), '.cache'), 'killer-design');
+// The runtime the killer-skills installer puts in ~/.cache/killer-skills on Windows:
+// Playwright with its own Chromium beside it, so nothing needs downloading.
+const RUNTIME = path.join(process.env.KILLER_SKILLS_CACHE || path.join(os.homedir(), '.cache'), 'killer-skills');
 
 async function loadPlaywright() {
-  for (const base of [process.cwd(), CACHE]) {
+  for (const base of [process.cwd(), RUNTIME, CACHE]) {
     try {
       const req = createRequire(path.join(base, '__resolve__.js'));
       const pkg = req.resolve('playwright/package.json');
+      // Point the runtime's Playwright at its own Chromium before it loads.
+      if (base === RUNTIME && existsSync(path.join(RUNTIME, 'ms-playwright'))) process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(RUNTIME, 'ms-playwright');
       const mod = await import(pathToFileURL(req.resolve('playwright')).href);
       return { pw: mod.default ?? mod, dir: path.dirname(pkg) };
     } catch {}
@@ -74,7 +79,7 @@ async function loadPlaywright() {
   await fs.mkdir(CACHE, { recursive: true });
   const pj = path.join(CACHE, 'package.json');
   if (!existsSync(pj)) await fs.writeFile(pj, '{ "name": "killer-design-tools", "private": true }\n');
-  execSync('npm install --no-audit --no-fund --loglevel=error playwright', { cwd: CACHE, stdio: 'inherit' });
+  execSync('npm install --prefer-offline --no-audit --no-fund --loglevel=error playwright', { cwd: CACHE, stdio: 'inherit' });
   const req = createRequire(path.join(CACHE, '__resolve__.js'));
   const mod = await import(pathToFileURL(req.resolve('playwright')).href);
   return { pw: mod.default ?? mod, dir: path.dirname(req.resolve('playwright/package.json')) };

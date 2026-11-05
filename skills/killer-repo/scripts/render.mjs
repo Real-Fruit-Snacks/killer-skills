@@ -13,11 +13,20 @@
  *   --only <list>    variants, from desktop-light,desktop-dark,phone-light,phone-dark (default: all four)
  *   --wait <ms>      extra settle time after load (default 600). Animated images are captured at
  *                    that moment, so raise it (e.g. --wait 4000) to see a later frame.
+ *   --offline        skip GitHub's Markdown API and make the approximate render straight away
  *
  * Local renders send the README to GitHub's Markdown API (through `gh` when it's
- * logged in), style it with github-markdown-css, and load images from your working
- * tree, so uncommitted changes show. Mermaid diagrams are drawn with mermaid from
- * jsDelivr, because github.com draws them with its own JavaScript.
+ * logged in), style it with github-markdown-css (vendor/), and load images from your
+ * working tree, so uncommitted changes show. Mermaid diagrams are drawn with Mermaid
+ * from the killer-skills runtime when it's installed, otherwise from jsDelivr, because
+ * github.com draws them with its own JavaScript.
+ *
+ * When GitHub can't be reached (offline, rate-limited, gh logged out with no network),
+ * the README is rendered with the vendored marked instead, with GitHub's main rules
+ * applied: alerts, task lists, linked images, heading anchors, and stripped styles and
+ * scripts. That render is close but not exact (no footnotes, math, emoji shortcodes or
+ * #123 / @user links), so every screenshot carries an "approximate render" label and the
+ * report says so.
  *
  * Desktop approximates the README column on a repo's home page at 1280px; phone is
  * 390px wide. Each variant gets a first-screen shot and a full-page shot.
@@ -26,7 +35,8 @@ import fs from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { loadPlaywright, launch, serve, run, repoRoot, repoSlug, findReadme, packageDir, log } from './lib.mjs';
+import { pathToFileURL } from 'node:url';
+import { loadPlaywright, launch, serve, run, repoRoot, repoSlug, findReadme, RUNTIME, VENDOR } from './lib.mjs';
 
 const VARIANTS = {
   'desktop-light': { layout: 'desktop', width: 1280, height: 900, scheme: 'light' },
@@ -39,7 +49,7 @@ const LAYOUT = { desktop: { col: '900px', pad: '32px' }, phone: { col: '100%', p
 // ---------- args ----------
 const argv = process.argv.slice(2);
 if (argv.includes('-h') || argv.includes('--help')) {
-  console.log('usage: node render.mjs [README.md | dir] | --url <url>  [--out dir] [--label name] [--repo owner/name] [--only desktop-light,...] [--wait 600]');
+  console.log('usage: node render.mjs [README.md | dir] | --url <url>  [--out dir] [--label name] [--repo owner/name] [--only desktop-light,...] [--wait 600] [--offline]');
   process.exit(0);
 }
 const opt = { wait: 600, only: Object.keys(VARIANTS) };
@@ -52,6 +62,7 @@ for (let i = 0; i < argv.length; i++) {
   else if (a === '--url') opt.url = argv[++i];
   else if (a === '--only') opt.only = argv[++i].split(',').map((s) => s.trim()).filter(Boolean);
   else if (a === '--wait') opt.wait = Number(argv[++i]);
+  else if (a === '--offline') opt.offline = true;
   else if (!target) target = a;
   else { console.error(`unknown argument: ${a}`); process.exit(1); }
 }
@@ -59,19 +70,32 @@ for (const v of opt.only) if (!VARIANTS[v]) { console.error(`unknown variant: ${
 const live = Boolean(opt.url);
 
 // ---------- local README -> HTML ----------
-async function renderMarkdown(file, slug) {
+async function renderWithGitHub(file, slug) {
   const args = ['api', 'markdown', '-F', `text=@${file}`, '-f', 'mode=gfm'];
   if (slug) args.push('-f', `context=${slug}`);
   const viaGh = run('gh', args, { maxBuffer: 64 * 1024 * 1024 });
   if (viaGh) return viaGh;
   const text = await fs.readFile(file, 'utf8');
-  const res = await fetch('https://api.github.com/markdown', {
-    method: 'POST',
-    headers: { accept: 'application/vnd.github+json', 'content-type': 'application/json', 'user-agent': 'killer-repo' },
-    body: JSON.stringify({ text, mode: 'gfm', ...(slug ? { context: slug } : {}) }),
-  });
+  let res;
+  try {
+    res = await fetch('https://api.github.com/markdown', {
+      method: 'POST',
+      headers: { accept: 'application/vnd.github+json', 'content-type': 'application/json', 'user-agent': 'killer-repo' },
+      body: JSON.stringify({ text, mode: 'gfm', ...(slug ? { context: slug } : {}) }),
+      signal: AbortSignal.timeout(20000),
+    });
+  } catch (e) {
+    throw new Error(`couldn't reach GitHub's Markdown API (${e.cause?.code || e.name || e.message})`);
+  }
   if (!res.ok) throw new Error(`GitHub's Markdown API answered ${res.status} (log in with \`gh auth login\` to avoid rate limits)`);
   return res.text();
+}
+
+// The offline stand-in: the vendored marked, with GitHub's rules applied in the page (see githubRules).
+async function renderApproximate(file) {
+  const { marked } = await import(pathToFileURL(path.join(VENDOR, 'marked.esm.js')).href);
+  const html = marked.parse(await fs.readFile(file, 'utf8'), { gfm: true, async: false });
+  return html.replace(/<pre><code class="language-mermaid">([\s\S]*?)<\/code><\/pre>/g, (_, src) => `<pre class="mermaid">${src}</pre>`);
 }
 
 // github.com fills these sections in with its own JavaScript; stand in for them.
@@ -83,7 +107,55 @@ function enrich(html) {
       (_, type) => `<div class="kr-note">A ${type} view renders here on github.com.</div>`);
 }
 
-function page(body, baseHref, css, layout) {
+// What GitHub does to rendered Markdown that marked doesn't. Runs in the page, for the approximate render only.
+function githubRules() {
+  const root = document.querySelector('.markdown-body');
+  root.querySelectorAll('script, style, iframe, form, object, embed, video, link, meta, base').forEach((el) => el.remove());
+  for (const el of root.querySelectorAll('*')) {
+    for (const a of [...el.attributes]) if (a.name === 'style' || a.name.startsWith('on')) el.removeAttribute(a.name);
+  }
+  const seen = new Map();
+  for (const h of root.querySelectorAll('h1, h2, h3, h4, h5, h6')) {
+    let slug = h.textContent.trim().toLowerCase().replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, '').replace(/ /g, '-');
+    const n = seen.get(slug) || 0;
+    seen.set(slug, n + 1);
+    if (n) slug += `-${n}`;
+    h.id = slug;
+  }
+  const titles = { NOTE: 'Note', TIP: 'Tip', IMPORTANT: 'Important', WARNING: 'Warning', CAUTION: 'Caution' };
+  for (const q of root.querySelectorAll('blockquote')) {
+    const p = q.firstElementChild;
+    const m = p && p.tagName === 'P' && p.innerHTML.match(/^\s*\[!(NOTE|TIP|IMPORTANT|WARNING|CAUTION)\]\s*(<br>\s*)?/i);
+    if (!m) continue;
+    const type = m[1].toUpperCase();
+    p.innerHTML = p.innerHTML.slice(m[0].length);
+    if (!p.innerHTML.trim()) p.remove();
+    const div = document.createElement('div');
+    div.className = `markdown-alert markdown-alert-${type.toLowerCase()}`;
+    const t = document.createElement('p');
+    t.className = 'markdown-alert-title';
+    t.textContent = titles[type];
+    div.append(t, ...q.childNodes);
+    q.replaceWith(div);
+  }
+  for (const img of root.querySelectorAll('img')) {
+    if (img.closest('a')) continue;
+    const a = document.createElement('a');
+    a.href = img.getAttribute('src') || '';
+    a.target = '_blank';
+    a.rel = 'noopener noreferrer';
+    img.replaceWith(a);
+    a.append(img);
+  }
+  for (const c of root.querySelectorAll('li > input[type="checkbox"]')) {
+    c.disabled = true;
+    c.classList.add('task-list-item-checkbox');
+    c.parentElement.classList.add('task-list-item');
+    c.closest('ul, ol')?.classList.add('contains-task-list');
+  }
+}
+
+function page(body, baseHref, css, layout, { approximate = false, mermaidSrc = null } = {}) {
   const { col, pad } = LAYOUT[layout];
   return `<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
 <base href="${baseHref}">
@@ -93,13 +165,29 @@ function page(body, baseHref, css, layout) {
   @media (prefers-color-scheme: dark) { html, body { background: #0d1117; } }
   .markdown-body { box-sizing: border-box; width: ${col}; max-width: 100%; margin: 0 auto; padding: ${pad}; }
   .kr-note { border: 1px dashed #8c959f; border-radius: 6px; padding: 12px; color: #8c959f; }
+  .kr-approx { position: fixed; right: 8px; bottom: 8px; z-index: 9; font: 600 12px/1.4 system-ui, sans-serif; padding: 4px 8px;
+    border-radius: 4px; background: #fff8c5; color: #3b2300; border: 1px solid #d4a72c; }
+  @media (prefers-color-scheme: dark) { .kr-approx { background: #3b2300; color: #f8e3a1; border-color: #9e6a03; } }
 </style></head>
-<body><article class="markdown-body">${body}</article>
+<body${approximate ? ' data-approximate="1"' : ''}><article class="markdown-body">${body}</article>
+${approximate ? `<div class="kr-approx">approximate render: GitHub's renderer was not used</div>` : ''}
 <script type="module">
+  ${approximate ? `(${githubRules.toString()})();` : ''}
   const blocks = document.querySelectorAll('pre.mermaid');
   if (blocks.length) {
     try {
-      const { default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs');
+      const local = ${JSON.stringify(mermaidSrc)};
+      let mermaid;
+      if (local) {
+        await new Promise((ok, no) => {
+          const s = document.createElement('script');
+          s.src = local;
+          s.onload = ok;
+          s.onerror = () => no(new Error('could not load ' + local));
+          document.head.append(s);
+        });
+        mermaid = window.mermaid;
+      } else ({ default: mermaid } = await import('https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs'));
       mermaid.initialize({ startOnLoad: false, theme: matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'default' });
       await mermaid.run({ nodes: blocks });
     } catch (e) { document.body.dataset.mermaidError = String((e && e.message) || e); }
@@ -152,6 +240,7 @@ let routes = {};
 let root;
 let label = opt.label;
 let readme;
+let approximateWhy = null;
 if (!live) {
   const t = path.resolve(target || '.');
   if (!existsSync(t)) { console.error(`not found: ${t}`); process.exit(1); }
@@ -161,16 +250,24 @@ if (!live) {
   const slug = repoSlug(root, opt.repo);
   label ||= path.basename(root);
   let html;
-  try {
-    html = enrich(await renderMarkdown(readme, slug));
-  } catch (e) {
-    console.error(`couldn't render with GitHub's Markdown API: ${e.message}`);
-    process.exit(1);
+  if (opt.offline) approximateWhy = 'asked for with --offline';
+  else {
+    try {
+      html = enrich(await renderWithGitHub(readme, slug));
+    } catch (e) {
+      approximateWhy = e.message;
+    }
   }
-  const css = await fs.readFile(path.join(await packageDir('github-markdown-css'), 'github-markdown.css'), 'utf8');
+  if (!html) html = await renderApproximate(readme);
+  const css = await fs.readFile(path.join(VENDOR, 'github-markdown.css'), 'utf8');
+  const mermaidFile = path.join(RUNTIME, 'mermaid', 'mermaid.min.js');
+  const mermaidSrc = existsSync(mermaidFile) ? '/__killer_repo__/mermaid.min.js' : null;
+  if (mermaidSrc) routes[mermaidSrc] = { file: mermaidFile };
   const rel = path.relative(root, path.dirname(readme)).split(path.sep).filter(Boolean);
   const base = '/' + rel.map(encodeURIComponent).join('/') + (rel.length ? '/' : '');
-  for (const layout of Object.keys(LAYOUT)) routes[`/__killer_repo__/${layout}.html`] = page(html, base, css, layout);
+  for (const layout of Object.keys(LAYOUT)) {
+    routes[`/__killer_repo__/${layout}.html`] = page(html, base, css, layout, { approximate: Boolean(approximateWhy), mermaidSrc });
+  }
 } else {
   label ||= 'live';
 }
@@ -183,7 +280,7 @@ if (!live) ({ server, origin } = await serve(root, routes));
 const playwright = await loadPlaywright();
 const browser = await launch(playwright);
 
-const report = { target: live ? opt.url : readme, out, variants: {} };
+const report = { target: live ? opt.url : readme, out, renderer: live ? 'github.com' : approximateWhy ? 'approximate' : 'github', approximateWhy, mermaid: live ? null : existsSync(path.join(RUNTIME, 'mermaid', 'mermaid.min.js')) ? 'runtime' : 'jsdelivr', variants: {} };
 const lines = [];
 const warn = (s) => lines.push(`WARN ${s}`);
 const info = (s) => lines.push(`INFO ${s}`);
@@ -227,6 +324,7 @@ try {
 
 // ---------- report ----------
 const summary = [];
+if (approximateWhy) warn(`approximate render, not GitHub's (${approximateWhy}): the vendored marked with GitHub's main rules applied. Footnotes, math, emoji shortcodes and #123 / @user links aren't reproduced, so check the real page on github.com before calling it done`);
 for (const [name, r] of Object.entries(report.variants)) {
   const f = r.first;
   const vis = f.visuals.length ? f.visuals.map((x) => `${x.name} ${x.w}x${x.h}`).join(', ') : 'none';

@@ -1,10 +1,9 @@
 /**
  * lib.mjs - shared helpers for the killer-repo scripts: finding or installing
- * npm packages once (Playwright, github-markdown-css), launching Chromium, a
- * throwaway static server, and repo lookups.
+ * Playwright once, launching Chromium, a throwaway static server, and repo lookups.
  */
 import { createRequire } from 'node:module';
-import { pathToFileURL } from 'node:url';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs/promises';
@@ -12,9 +11,15 @@ import { existsSync, readdirSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
-export const CACHE = path.join(os.homedir(), '.cache', 'killer-repo');
-// Reuse a copy the project or killer-design already installed before downloading another.
-const BASES = [process.cwd(), CACHE, path.join(os.homedir(), '.cache', 'killer-design')];
+const CACHES = process.env.KILLER_SKILLS_CACHE || path.join(os.homedir(), '.cache');
+export const CACHE = path.join(CACHES, 'killer-repo');
+// The runtime the killer-skills installer puts in ~/.cache/killer-skills on Windows:
+// Playwright with its own Chromium beside it, and Mermaid, so nothing needs downloading.
+export const RUNTIME = path.join(CACHES, 'killer-skills');
+// Files that ship inside this skill (github-markdown-css, marked), so they need no install.
+export const VENDOR = path.join(path.dirname(fileURLToPath(import.meta.url)), '..', 'vendor');
+// Reuse a copy the project, the runtime or killer-design already has before downloading another.
+const BASES = [process.cwd(), RUNTIME, CACHE, path.join(CACHES, 'killer-design')];
 
 export function log(msg) {
   console.error(`[killer-repo] ${msg}`);
@@ -30,7 +35,7 @@ export async function packageDir(name) {
   const pj = path.join(CACHE, 'package.json');
   if (!existsSync(pj)) await fs.writeFile(pj, '{ "name": "killer-repo-cache", "private": true }\n');
   log(`installing ${name} once into ${CACHE} ...`);
-  execSync(`npm install --no-audit --no-fund --loglevel=error ${name}`, { cwd: CACHE, stdio: 'inherit' });
+  execSync(`npm install --prefer-offline --no-audit --no-fund --loglevel=error ${name}`, { cwd: CACHE, stdio: 'inherit' });
   const d = path.join(CACHE, 'node_modules', name);
   if (!existsSync(path.join(d, 'package.json'))) throw new Error(`could not install ${name}`);
   return d;
@@ -38,6 +43,8 @@ export async function packageDir(name) {
 
 export async function loadPlaywright() {
   const dir = await packageDir('playwright');
+  // Point the runtime's Playwright at its own Chromium before it loads.
+  if (dir.startsWith(RUNTIME + path.sep) && existsSync(path.join(RUNTIME, 'ms-playwright'))) process.env.PLAYWRIGHT_BROWSERS_PATH = path.join(RUNTIME, 'ms-playwright');
   const req = createRequire(path.join(dir, '..', '__resolve__.js'));
   const mod = await import(pathToFileURL(req.resolve('playwright')).href);
   return { pw: mod.default ?? mod, dir };
@@ -62,14 +69,19 @@ const TYPES = {
   '.mp4': 'video/mp4', '.webm': 'video/webm',
 };
 
-/** Serve `root` on 127.0.0.1; `routes` maps exact paths to generated HTML. */
+/** Serve `root` on 127.0.0.1. `routes` maps exact paths to generated HTML, or to { file } to serve a file from elsewhere. */
 export function serve(root, routes = {}) {
   const top = path.resolve(root);
   const server = http.createServer(async (req, res) => {
     const url = decodeURIComponent(new URL(req.url, 'http://x').pathname);
-    if (routes[url] !== undefined) {
+    const route = routes[url];
+    if (route?.file) {
+      res.writeHead(200, { 'content-type': TYPES[path.extname(route.file).toLowerCase()] || 'application/octet-stream' });
+      return res.end(await fs.readFile(route.file));
+    }
+    if (route !== undefined) {
       res.writeHead(200, { 'content-type': 'text/html; charset=utf-8' });
-      return res.end(routes[url]);
+      return res.end(route);
     }
     const file = path.resolve(path.join(top, url));
     if (file !== top && !file.startsWith(top + path.sep)) {

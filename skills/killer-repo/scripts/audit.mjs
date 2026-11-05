@@ -234,6 +234,7 @@ async function spaRoute(url, body) {
 }
 if (!opt.offline && remote.size) {
   const urls = [...remote.keys()];
+  const unreachable = [];
   let next = 0;
   await Promise.all(Array.from({ length: 8 }, async () => {
     while (next < urls.length) {
@@ -241,7 +242,7 @@ if (!opt.offline && remote.size) {
       const r = await probe(url);
       const first = remote.get(url)[0];
       const where = `${rel(first.file)}:${first.line}`;
-      if (r.error) WARN(`${where} unreachable (${r.error}): ${url}`);
+      if (r.error) unreachable.push(`${where} unreachable (${r.error}): ${url}`);
       else if (r.status === 404 && (await spaRoute(url, r.body))) INFO(`${where} single-page app route: the server answers 404 but serves the app, which loads it: ${url}`);
       else if (r.status === 404 || r.status === 410) FAIL(`${where} dead link (${r.status}): ${url}`);
       else if (r.status >= 500) WARN(`${where} server error (${r.status}): ${url}`);
@@ -249,6 +250,10 @@ if (!opt.offline && remote.size) {
       else if (first.isImage && r.length > 1_000_000) WARN(`${where} heavy remote image (${(r.length / 1_048_576).toFixed(1)} MB): ${url}`);
     }
   }));
+  // Nothing at all answered: this machine is offline, which says nothing about the links.
+  if (unreachable.length && unreachable.length === urls.length) {
+    INFO(`no network: none of the ${urls.length} outside link(s) could be reached, so they weren't checked. Run again online, or pass --offline to skip them`);
+  } else for (const u of unreachable) WARN(u);
 }
 res.stats = { files: files.map(rel), refs: checked, remote: remote.size, images, imageKB: Math.round(imageBytes / 1024), badges };
 if (badges > 6) WARN(`${badges} badges in the README: past a handful they read as noise`);
@@ -256,7 +261,7 @@ if (badges > 6) WARN(`${badges} badges in the README: past a handful they read a
 // ---------- the repo on GitHub ----------
 if (!opt.offline && slug) {
   const j = JSON.parse(run('gh', ['repo', 'view', slug, '--json', 'description,homepageUrl,repositoryTopics,visibility,isArchived,licenseInfo,latestRelease,defaultBranchRef,usesCustomOpenGraphImage']) || 'null');
-  if (!j) WARN(`couldn't read ${slug} through gh (not logged in, or no access); skipped the GitHub checks`);
+  if (!j) WARN(`couldn't read ${slug} through gh (offline, not logged in, or no access); skipped the GitHub checks`);
   else {
     res.github = j;
     if (!j.description) WARN('no description: the About panel is empty, and search results show nothing under the name');

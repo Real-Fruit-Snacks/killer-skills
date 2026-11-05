@@ -17,10 +17,10 @@ And one floor under all of it: **everything on the page is true.** A wow moment 
 
 There is no template. Every repo gets its own structure, voice and look, invented from what the project is: no fixed section order, no required sections. If the user wants an existing identity kept, see "Working with an existing identity" near the end.
 
-The scripts in `scripts/` need Node 18+. The first run installs Playwright and Chromium into `~/.cache/killer-repo`, or reuses killer-design's copy if it's there.
+The scripts in `scripts/` need Node 18+. They use Playwright from the project if there is one, then the killer-skills runtime in `~/.cache/killer-skills` (the Windows installer puts Playwright, its Chromium and Mermaid there), then killer-design's copy. Failing all of those, the first run installs Playwright and Chromium into `~/.cache/killer-repo`, which needs the network. GitHub's Markdown stylesheet and an offline Markdown renderer ship in `vendor/`.
 
 - `audit.mjs [repo]`: broken links and anchors, wrong letter case, images that are ignored or not committed, image weight, badges, and the repo as GitHub shows it (About panel, topics, social card, license, releases, community files, failing workflows).
-- `render.mjs [repo | README]`: the README through GitHub's own Markdown renderer, screenshotted in light and dark at desktop and phone widths. `--url` screenshots a live GitHub page instead.
+- `render.mjs [repo | README]`: the README through GitHub's own Markdown renderer, screenshotted in light and dark at desktop and phone widths. `--url` screenshots a live GitHub page instead. When GitHub can't be reached it makes an approximate render instead (`--offline` asks for one): close, not exact, labelled on every screenshot. Treat an approximate render as a draft check, say so in the handoff, and render with GitHub before calling the README done.
 - `card.mjs <file.html>`: any HTML to an image, such as the 1280×640 social card or a designed still for the README.
 - `frames.mjs <frame> <frame> ... --out demo.svg`: a few real still frames, from any source, into one animated SVG that GitHub plays in a README, with no ffmpeg needed.
 
@@ -172,4 +172,4 @@ When the user chose "Evolve what's there" or "Follow my brand", find the identit
 
 ## If something can't run
 
-If a script fails (no Node, no network for the first install, `gh` not logged in), say so plainly and do that part by hand: review the Markdown against `references/readme-craft.md`, and check links yourself. Never claim to have looked at something you didn't render.
+Offline, `render.mjs` still renders (approximately) and `audit.mjs` still checks everything local; it says when no outside link could be reached. If a script fails (no Node, no network for the first install, `gh` not logged in), say so plainly and do that part by hand: review the Markdown against `references/readme-craft.md`, and check links yourself. Never claim to have looked at something you didn't render.

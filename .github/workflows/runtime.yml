@@ -1,0 +1,49 @@
+# The Windows runtime: Playwright, the Chromium it launches and Mermaid, built with
+# tools/build-runtime.ps1 and tested with every Chromium script in the skills while
+# the network is cut off (tests/test_runtime.py). Runs when the scripts or the pins
+# change, and from release.yml, which publishes the zip it uploads.
+name: runtime
+
+on:
+  push:
+    branches: ["**"]   # not tags: release.yml builds the runtime for those
+    paths:
+      - "skills/*/scripts/**"
+      - "tools/build-runtime.ps1"
+      - "tools/runtime.json"
+      - "tests/test_runtime.py"
+      - ".github/workflows/runtime.yml"
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  windows:
+    name: windows-x64
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        shell: pwsh
+        run: ./tools/build-runtime.ps1 -Out runtime-dist
+
+      - name: Every Chromium script, offline, from the runtime alone
+        run: python -I tests/test_runtime.py runtime-dist/killer-skills-runtime-windows-x64.zip
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: runtime-windows-x64
+          path: runtime-dist/killer-skills-runtime-windows-x64.zip
+          compression-level: 0
+          retention-days: 7

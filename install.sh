@@ -13,6 +13,9 @@
 #
 #   KILLER_SKILLS_VERSION=v1.0.0   a release tag instead of the latest
 #   KILLER_SKILLS_DIR=path         install somewhere other than ~/.claude/skills
+#
+# The runtime that saves killer-design and killer-repo their first-use downloads
+# (Playwright, Chromium, Mermaid) is built for Windows only, and install.ps1 installs it.
 set -eu
 
 repo=Real-Fruit-Snacks/killer-skills
@@ -75,6 +78,16 @@ for name in "$@"; do
   printf '%s %s\n' "$verb" "$name"
   count=$((count + 1))
 done
+
+case $(uname -s 2>/dev/null) in
+  MINGW* | MSYS* | CYGWIN*)
+    case " $* " in
+      *" killer-design "* | *" killer-repo "*)
+        if [ "${KILLER_SKILLS_RUNTIME:-}" != skip ] && grep -q '  killer-skills-runtime-windows-x64\.zip$' "$tmp/SHA256SUMS.txt"; then
+          printf 'the Windows runtime (Playwright, Chromium, Mermaid) installs with install.ps1; without it, killer-design and killer-repo download Playwright on first use\n'
+        fi ;;
+    esac ;;
+esac
 
 case $dest in
   "$HOME"/*) shown="~${dest#"$HOME"}" ;;

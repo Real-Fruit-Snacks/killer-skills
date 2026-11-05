@@ -2,6 +2,7 @@
 # URLs always fetch the newest release:
 #   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/<skill>.zip
 #   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-skills.zip
+#   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-skills-runtime-windows-x64.zip
 name: release
 
 on:
@@ -12,7 +13,11 @@ permissions:
   contents: write
 
 jobs:
+  runtime:
+    uses: ./.github/workflows/runtime.yml
+
   release:
+    needs: runtime
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -35,9 +40,19 @@ jobs:
           python -I tests/test_install.py
 
       - name: Pack
+        run: python -I tools/package.py --out dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: runtime-windows-x64
+          path: dist
+
+      - name: Checksums over everything, the runtime included
         run: |
-          python -I tools/package.py --out dist
-          cat dist/SHA256SUMS.txt
+          cd dist
+          sha256sum -- *.zip *.tar.gz > SHA256SUMS.txt
+          cat SHA256SUMS.txt
+          ls -la
 
       - name: Publish
         env:
