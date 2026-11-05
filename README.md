@@ -48,7 +48,7 @@ Or unzip a download into `~/.claude/skills` yourself; [killer-skills.zip](https:
 ## Tested on
 
 - Windows 11 · Claude Code 2.1.316 · Node.js 24.20.0 · Python 3.14.2: each skill run on a real project
-- Ubuntu 24.04, Windows Server 2025 and macOS 15 in CI on every push: both installers (sh, Windows PowerShell 5.1, PowerShell 7), the packager and the council script, with Python 3.12 and Node.js 24
+- Ubuntu 24.04, Windows Server 2025 and macOS 26 in CI on every push: both installers (sh, Windows PowerShell 5.1, PowerShell 7), the packager and the council script, with Python 3.12 and Node.js 24
 - *Not* tested: the skills themselves in Claude Code on macOS or Linux, or uploaded to claude.ai
 
 ## Known issues
