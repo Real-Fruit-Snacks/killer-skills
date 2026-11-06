@@ -1,4 +1,12 @@
 {
   "playwright": "1.64.1",
-  "mermaid": "11.17.2"
+  "mermaid": "11.17.2",
+  "node": {
+    "version": "24.22.2",
+    "sha256": "ca1bff5d8ead13c9f2ea404a176db46bd430704d5b5113734049fa365e7799e2"
+  },
+  "python": {
+    "version": "3.14.10",
+    "sha256": "90905e64a840557d8c1bc4f5b74db3d7ee85e3ffb217611cac1c7813acea4159"
+  }
 }

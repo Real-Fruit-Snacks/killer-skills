@@ -44,5 +44,8 @@ jobs:
       - name: Packager
         run: python -I tests/test_package.py
 
+      - name: fonts.mjs
+        run: python -I tests/test_fonts.py
+
       - name: Installers
         run: python -I tests/test_install.py

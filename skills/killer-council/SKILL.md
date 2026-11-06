@@ -7,7 +7,7 @@ description: "Run a blind scoring council on a piece of work (code, a doc, a pla
 
 You are the **leader**. The council is a set of fresh member agents. Each reviews the work from one lens and returns a score from 1 to 100 with reasons. You write the questions, tally the scores, fix the work and reconvene, until the council passes it or the loop stops making progress. You never score the work yourself: you're the one changing it, so you can't judge it blind.
 
-`scripts/council.py` in this skill's folder does the bookkeeping: sealing the threshold, snapshots, leak checks and the tally. Run it with `py` on Windows and `python3` elsewhere; `council.py <command> --help` lists the options.
+`scripts/council.py` in this skill's folder does the bookkeeping: sealing the threshold, snapshots, leak checks and the tally. Run it with `py` on Windows (or `python` if there's no `py`) and `python3` elsewhere. If none of those works on Windows, use `~/.cache/killer-skills-python/python.exe`: the Windows installer puts Python there when it's missing. `council.py <command> --help` lists the options.
 
 ## Why blindness matters, and how to keep it
 

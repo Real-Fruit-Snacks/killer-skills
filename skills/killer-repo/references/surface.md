@@ -20,6 +20,7 @@ gh repo edit <owner>/<repo> --add-topic <a>,<b> --remove-topic <c>
 - It's often seen at around 400px wide in feeds and chats, so it needs one big idea: the name, one line and one visual. Keep important content away from the edges, because some platforms crop.
 - It's a single image with no dark variant, so pick a palette that sits well in both light and dark feeds.
 - Build it in HTML and render it with `node <skill-dir>/scripts/card.mjs card.html --out docs/assets/social.png`. Commit the HTML next to the PNG so the card can be remade.
+- Self-host the card's fonts so it renders offline and the same every time: with killer-design installed, `node <killer-design-dir>/scripts/fonts.mjs add docs "Family"` copies a face from the killer-skills font pack next to the HTML and writes `docs/assets/fonts/fonts.css`.
 
 ## Releases
 

@@ -25,7 +25,7 @@ A system font stack is a legitimate deliberate choice for utilitarian, brutalist
 
 ## Pairings by personality
 
-These are all free on Google Fonts. Each row offers several display faces because a list anchors. If every warm site takes the first name in its row, the table becomes a template of its own. Read across the row and choose by the concept's specific character (its era, its material, how loud it is) after looking at the actual glyphs, since two faces with the same label can feel very different. If you used a face on the previous project, choose another.
+These are all free on Google Fonts, and every one is in the killer-skills font pack (see Loading fonts). Each row offers several display faces because a list anchors. If every warm site takes the first name in its row, the table becomes a template of its own. Read across the row and choose by the concept's specific character (its era, its material, how loud it is) after looking at the actual glyphs, since two faces with the same label can feel very different. If you used a face on the previous project, choose another.
 
 | Personality | Display options | Text options | Mono / extra |
 |---|---|---|---|
@@ -65,7 +65,17 @@ Hierarchy comes from size, weight, color, case and space together. Use two or th
 
 ## Loading fonts
 
-Google Fonts css2 API:
+Self-host from the killer-skills font pack when it's installed. It has every face named in this file, as latin and latin-ext `.woff2` files with their licences:
+
+```bash
+node <skill-dir>/scripts/fonts.mjs list [text]                 # what's in it: weights, or a variable family's axes
+node <skill-dir>/scripts/fonts.mjs add path/to/site "Newsreader" "Public Sans"
+node <skill-dir>/scripts/fonts.mjs add path/to/site "IBM Plex Mono" --weights 400,600
+```
+
+`add` copies each family into `assets/fonts/<id>/` and writes `assets/fonts/fonts.css`, with one `@font-face` per file, `font-display: swap` and each subset's `unicode-range`. Link it before your own stylesheet and use the family names as usual. A variable family is one file per style that covers every weight (and its width or optical-size axes); for a static family, pass `--weights` with only the weights the design uses. Adding a family again replaces it. This works offline, and the finished site requests nothing from a font host.
+
+If the pack isn't installed or lacks the face, use the Google Fonts css2 API:
 
 ```html
 <link rel="preconnect" href="https://fonts.googleapis.com">
@@ -78,7 +88,7 @@ Google Fonts css2 API:
 - Always use `display=swap`.
 - Load the real italic and bold rather than letting the browser fake them. Faux bold and italic look smeared.
 - Write a fallback stack in the same spirit: `"Newsreader", ui-serif, Georgia, serif`.
-- Self-hosting (download the `.woff2` files into `assets/fonts/` and write `@font-face` rules) is better for privacy-focused projects and for offline use. If the project's audience or values call for it (privacy tools especially), self-host and say so.
+- Self-hosting is better for privacy and for offline use. Without the pack, that means downloading the `.woff2` files into `assets/fonts/` and writing the `@font-face` rules yourself, and it needs the network. If the project's audience or values call for it (privacy tools especially), self-host and say so.
 - `shoot.mjs` reports whether each web font actually loaded. A FAIL there means visitors see the fallback.
 
 ## Finishing details

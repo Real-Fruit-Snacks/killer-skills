@@ -1,6 +1,13 @@
-"""The Windows runtime, end to end: every Chromium script in the skills, with the network cut off.
+"""The Windows packs, end to end: every Chromium script in the skills, with the network cut off.
 
 Run: python -I tests/test_runtime.py <killer-skills-runtime-windows-x64.zip>
+         [--node <killer-skills-node-windows-x64.zip>] [--python <killer-skills-python-windows-x64.zip>]
+         [--fonts <killer-skills-fonts.zip>]
+
+With --node, every script runs on the packed Node.js instead of the one on the PATH.
+With --python, killer-council's own tests run on the packed Python. With --fonts, it
+checks every family in the font pack, adds two of them to a page with fonts.mjs and
+screenshots it, and every face must load from the page's own folder.
 
 Unpacks the runtime into a scratch cache (KILLER_SKILLS_CACHE), then blocks every
 way the scripts could download: npm runs offline, Playwright's download host and
@@ -10,8 +17,10 @@ a folder with no node_modules. They must all work, from the runtime alone, and t
 README render must fall back to the approximate renderer by itself and draw its
 Mermaid diagram from the runtime. Windows only: the runtime is built for Windows.
 """
+import argparse
 import json
 import os
+import re
 import shutil
 import subprocess
 import sys
@@ -36,16 +45,34 @@ def check(name, cond, detail=""):
 if os.name != "nt":
     print("SKIP the runtime is built for Windows only")
     sys.exit(0)
-if len(sys.argv) < 2 or not Path(sys.argv[1]).is_file():
-    sys.exit("usage: python -I tests/test_runtime.py <killer-skills-runtime-windows-x64.zip>")
+ap = argparse.ArgumentParser()
+ap.add_argument("runtime")
+ap.add_argument("--node")
+ap.add_argument("--python")
+ap.add_argument("--fonts")
+a = ap.parse_args()
+for f in (a.runtime, a.node, a.python, a.fonts):
+    if f and not Path(f).is_file():
+        sys.exit(f"no file {f}")
+PINS = json.loads((ROOT / "tools" / "runtime.json").read_text(encoding="utf-8"))
 
 tmp = Path(tempfile.mkdtemp())
 try:
     caches = tmp / "cache"
-    with zipfile.ZipFile(sys.argv[1]) as z:
-        z.extractall(caches / "killer-skills")
+
+    def unpack(zip_path, folder):
+        with zipfile.ZipFile(zip_path) as z:
+            z.extractall(caches / folder)
+        return caches / folder
+
+    unpack(a.runtime, "killer-skills")
     info = json.loads((caches / "killer-skills" / "runtime.json").read_text())
     print(f"runtime: Playwright {info['playwright']}, Chrome {info['chrome']}, Mermaid {info['mermaid']}")
+    NODE = "node"
+    if a.node:
+        NODE = str(unpack(a.node, "killer-skills-node") / "node.exe")
+        v = subprocess.run([NODE, "--version"], capture_output=True, text=True).stdout.strip()
+        check("the Node.js pack runs, at the pinned version", v == "v" + PINS["node"]["version"], v)
 
     dead = "http://127.0.0.1:9"
     env = dict(os.environ, KILLER_SKILLS_CACHE=str(caches), npm_config_offline="true",
@@ -56,7 +83,7 @@ try:
     work.mkdir()
 
     def node(script, *args):
-        r = subprocess.run(["node", str(script), *map(str, args)], cwd=work, env=env, capture_output=True, text=True, timeout=600)
+        r = subprocess.run([NODE, str(script), *map(str, args)], cwd=work, env=env, capture_output=True, text=True, timeout=600)
         return r, r.stdout + r.stderr
 
     def no_download(out):
@@ -93,6 +120,45 @@ try:
     shots = sorted((tmp / "shoot").glob("*.png"))[:1] + [tmp / "card.png"]
     r, out = node(REPO / "frames.mjs", *shots, "--out", tmp / "frames.svg")
     check("frames.mjs builds an animated SVG from the runtime", r.returncode == 0 and (tmp / "frames.svg").exists(), out)
+
+    if a.fonts:
+        fonts = unpack(a.fonts, "killer-skills-fonts")
+        index = json.loads((fonts / "fonts.json").read_text(encoding="utf-8"))
+        pinned = [f["family"] for f in json.loads((ROOT / "tools" / "fonts.json").read_text(encoding="utf-8"))["families"]]
+        check("the font pack has every pinned family", sorted(f["family"] for f in index["families"]) == sorted(pinned) and index["count"] == len(pinned),
+              set(pinned) ^ {f["family"] for f in index["families"]})
+        bad = [f"{f['id']}/{x['file']}" for f in index["families"] for x in f["files"]
+               if not (fonts / f["id"] / x["file"]).is_file() or (fonts / f["id"] / x["file"]).read_bytes()[:4] != b"wOF2"]
+        check("every file in the font pack is a woff2 it lists", not bad, bad[:10])
+        check("every family has its licence", all((fonts / f["id"] / "LICENSE").is_file() for f in index["families"]))
+        check("every family has latin files with a unicode-range",
+              all(any(x["subset"] == "latin" and x.get("unicodeRange") for x in f["files"]) for f in index["families"]))
+
+        site = tmp / "fontsite"
+        site.mkdir()
+        r, out = node(DESIGN / "fonts.mjs", "add", site, "Newsreader", "IBM Plex Mono", "--weights", "400,600")
+        check("fonts.mjs adds a variable and a static family from the pack", r.returncode == 0 and (site / "assets" / "fonts" / "fonts.css").exists(), out)
+        (site / "index.html").write_text("""<!doctype html><html lang="en"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1"><title>Fonts</title>
+<link rel="stylesheet" href="assets/fonts/fonts.css">
+<style>body{margin:2rem;font:1.25rem/1.5 "Newsreader",serif}h1{font-size:4rem;font-weight:700}em{font-style:italic}
+code{font:600 1rem "IBM Plex Mono",monospace}</style></head>
+<body><main><h1>Self-hosted</h1><p>Body text in Newsreader, <em>with its real italic</em>, and
+<code>IBM Plex Mono</code> for code.</p></main></body></html>""", encoding="utf-8")
+        r, out = node(DESIGN / "shoot.mjs", site, "--widths", "390", "--slices", "1", "--no-full", "--out", tmp / "fontshot")
+        rep = json.loads((tmp / "fontshot" / "report.json").read_text(encoding="utf-8")) if (tmp / "fontshot" / "report.json").exists() else {}
+        seen = {f["family"]: f["status"] for run in rep.get("runs", []) for f in run.get("checks", {}).get("fonts", [])}
+        check("a page using the pack's fonts loads every face", r.returncode == 0 and seen.get("Newsreader") == "web font loaded"
+              and seen.get("IBM Plex Mono") == "web font loaded" and not re.search(r"FAIL.*font", out), (seen, out[-1500:]))
+        check("the page requests nothing outside its folder", not any(run.get("failedRequests") for run in rep.get("runs", [])),
+              [run.get("failedRequests") for run in rep.get("runs", [])])
+
+    if a.python:
+        py = unpack(a.python, "killer-skills-python") / "python.exe"
+        v = subprocess.run([str(py), "-I", "-c", "import sys; print(sys.version.split()[0])"], capture_output=True, text=True).stdout.strip()
+        check("the Python pack runs, at the pinned version", v == PINS["python"]["version"], v)
+        r = subprocess.run([str(py), "-I", str(ROOT / "tests" / "test_council.py")], capture_output=True, text=True, timeout=600, env=env)
+        check("killer-council's tests pass on the Python pack", r.returncode == 0 and "ALL PASSED" in r.stdout, (r.stdout + r.stderr)[-2000:])
 
     check("nothing was installed into the skills' own caches",
           not (caches / "killer-design").exists() and not (caches / "killer-repo").exists(),

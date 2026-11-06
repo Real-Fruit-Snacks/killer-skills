@@ -18,7 +18,8 @@ left out; the tool says which.
 
 Before packing, each SKILL.md is checked: frontmatter first, a name that
 matches its folder (lowercase letters, digits and hyphens, 64 at most) and a
-description of 1 to 1024 characters.
+description of 1 to 1024 characters. Names starting killer-skills- are kept for
+the packs that ship beside the skills (tools/packs.py).
 """
 import argparse
 import gzip
@@ -75,6 +76,8 @@ def check_skill(name, skill_md):
         problems.append("folder name must be lowercase letters, digits and hyphens, 64 characters at most")
     if name == BUNDLE:
         problems.append(f"{BUNDLE} is the name of the bundle of every skill; pick another")
+    elif name.startswith(BUNDLE + "-"):
+        problems.append(f"names starting {BUNDLE}- are the packs' (fonts, runtime, Node, Python); pick another")
     fm = frontmatter(skill_md)
     if fm is None:
         return problems + ["SKILL.md must start with frontmatter between two '---' lines"]

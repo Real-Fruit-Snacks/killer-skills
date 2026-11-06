@@ -111,6 +111,17 @@ node <skill-dir>/scripts/scale.mjs --min-ratio 1.2 --max-ratio 1.333   # pick ra
 
 After that, use tokens instead of hard-coded numbers. Hard-coded numbers drift, and the drift is what makes spacing look slightly off everywhere.
 
+The scripts need Node 20 or newer. If `node` isn't on the PATH, run them with `~/.cache/killer-skills-node/node.exe` instead: the Windows installer puts Node there when it's missing.
+
+**Fonts.** Self-host them from the killer-skills font pack, which has every face `references/typography.md` names:
+
+```bash
+node <skill-dir>/scripts/fonts.mjs list                       # families, with their weights or axes
+node <skill-dir>/scripts/fonts.mjs add path/to/site "Newsreader" "IBM Plex Mono" --weights 400,600
+```
+
+`add` copies the files and their licences into `assets/fonts/` and writes `assets/fonts/fonts.css`. Link that stylesheet before `styles.css`, and preload only the face the first screen depends on (the script prints the line). It needs no network, and the finished site requests nothing from a font host. If the pack isn't installed or doesn't have the face, load it from Google Fonts as `references/typography.md` describes.
+
 **Files.** For a new site, unless the project dictates otherwise:
 
 ```
@@ -119,7 +130,7 @@ site/            (or wherever the user or project wants it)
   styles.css
   DESIGN.md
   icon.svg, favicon.ico, apple-touch-icon.png, icon-192/512.png, icon-maskable-512.png, manifest.webmanifest
-  assets/        (svg, images)
+  assets/        (svg, images, fonts/)
   script.js      (the wow moment and small interactions; keep it short)
 ```
 
@@ -171,7 +182,7 @@ Then actually look, using the Read tool on the PNGs. Start with the desktop and 
 
 Treat FAIL lines as bugs. WARN lines need judgment.
 
-If the script can't run (no Node, no network for the first install), say so plainly and review the code against the checklist instead. Never claim to have checked something visually when you haven't.
+If the script can't run (no Node, even in `~/.cache/killer-skills-node`, or no network for the first install), say so plainly and review the code against the checklist instead. Never claim to have checked something visually when you haven't.
 
 ## 6. Polish and hand off
 
@@ -244,7 +255,7 @@ What strong sites do instead:
 
 ## Reference files
 
-- `references/typography.md`: choosing and pairing fonts (with options that avoid the defaults), scales, loading, finishing details. Read it when choosing type.
+- `references/typography.md`: choosing and pairing fonts (with options that avoid the defaults), scales, loading (self-hosted from the font pack, or Google Fonts), finishing details. Read it when choosing type.
 - `references/color.md`: building a palette in OKLCH, contrast targets, dark mode, gradients and texture. Read it when choosing color.
 - `references/layout.md`: page structure, grids, rhythm, section patterns, responsive strategy. Read it when planning the page.
 - `references/motion-and-wow.md`: what a wow moment is, the technique menu, tested recipes (entrances, typing terminal, pointer light, scroll scenes, theme sweep, generative canvas, tilt), and performance and accessibility rules. Read it in step 2, when choosing the wow moment, and again in step 4.

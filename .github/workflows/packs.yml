@@ -1,0 +1,97 @@
+# The packs that ship beside the skills: the Windows runtime (Playwright, the Chromium it
+# launches and Mermaid, built with tools/build-runtime.ps1), Node.js and Python for
+# Windows, and the font pack (those three from tools/packs.py). The Windows job tests
+# them all with the network cut off (tests/test_runtime.py). Runs when the scripts, the
+# pins or the builders change, and from release.yml, which publishes what it uploads.
+name: packs
+
+on:
+  push:
+    branches: ["**"]   # not tags: release.yml builds the packs for those
+    paths:
+      - "skills/*/scripts/**"
+      - "tools/build-runtime.ps1"
+      - "tools/packs.py"
+      - "tools/runtime.json"
+      - "tools/fonts.json"
+      - "tests/test_runtime.py"
+      - "tests/test_council.py"
+      - ".github/workflows/packs.yml"
+  workflow_call:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  fonts:
+    name: fonts
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build
+        run: python -I tools/packs.py fonts --out packs-dist
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packs-fonts
+          path: |
+            packs-dist/killer-skills-fonts.zip
+            packs-dist/killer-skills-fonts.tar.gz
+          compression-level: 0
+          retention-days: 7
+
+  windows:
+    name: windows-x64
+    needs: fonts
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v5
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+
+      - name: Build the runtime
+        shell: pwsh
+        run: ./tools/build-runtime.ps1 -Out packs-dist
+
+      - name: Build Node.js and Python
+        run: |
+          python -I tools/packs.py node --out packs-dist
+          python -I tools/packs.py python --out packs-dist
+
+      - uses: actions/download-artifact@v8
+        with:
+          name: packs-fonts
+          path: packs-dist
+
+      - name: Every pack, offline
+        run: >-
+          python -I tests/test_runtime.py packs-dist/killer-skills-runtime-windows-x64.zip
+          --node packs-dist/killer-skills-node-windows-x64.zip
+          --python packs-dist/killer-skills-python-windows-x64.zip
+          --fonts packs-dist/killer-skills-fonts.zip
+
+      - name: Checksums, to compare with the last release
+        shell: bash
+        run: cd packs-dist && sha256sum -- *.zip *.tar.gz
+
+      - uses: actions/upload-artifact@v7
+        with:
+          name: packs-windows-x64
+          path: |
+            packs-dist/killer-skills-runtime-windows-x64.zip
+            packs-dist/killer-skills-node-windows-x64.zip
+            packs-dist/killer-skills-python-windows-x64.zip
+          compression-level: 0
+          retention-days: 7

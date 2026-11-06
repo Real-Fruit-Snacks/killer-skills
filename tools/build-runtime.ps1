@@ -5,9 +5,10 @@
 #
 #   .\tools\build-runtime.ps1 [-Out dist]
 #
-# Versions come from tools/runtime.json. Needs Node.js, npm and the network. Before
-# zipping, it launches the bundled Chromium from the runtime folder alone, so a zip
-# that can't open a page is never written.
+# Versions come from tools/runtime.json. Needs Node.js, npm, Python and the network.
+# Before zipping, it launches the bundled Chromium from the runtime folder alone, so a
+# zip that can't open a page is never written. tools/packs.py writes the zip, so the
+# same pins give the same bytes and installers don't download a runtime they have.
 param([string]$Out = 'dist')
 
 $ErrorActionPreference = 'Stop'
@@ -83,8 +84,10 @@ const { chromium } = createRequire(path.join(rt, 'x.js'))('playwright');
   New-Item -ItemType Directory -Force -Path $Out | Out-Null
   $zip = Join-Path (Resolve-Path $Out).Path $name
   if (Test-Path -LiteralPath $zip) { Remove-Item -LiteralPath $zip -Force }
-  Add-Type -AssemblyName System.IO.Compression.FileSystem
-  [IO.Compression.ZipFile]::CreateFromDirectory($rt, $zip, [IO.Compression.CompressionLevel]::Optimal, $false)
+  # Playwright's .links folder records this build's temp path, so it stays out.
+  $py = if (Get-Command py -ErrorAction SilentlyContinue) { @('py', '-3') } else { @('python') }
+  $pyArgs = @($py | Select-Object -Skip 1)
+  Invoke-Native 'zip' { & $py[0] @pyArgs -I (Join-Path $PSScriptRoot 'packs.py') zipdir $rt $zip --exclude 'ms-playwright/.links/*' }
   $mb = [math]::Round((Get-Item -LiteralPath $zip).Length / 1MB, 1)
   Write-Host "wrote $zip ($mb MB): Playwright $pw, Chrome headless shell $($shell.browserVersion), Mermaid $($pins.mermaid)"
 }

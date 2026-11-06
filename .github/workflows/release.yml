@@ -2,7 +2,9 @@
 # URLs always fetch the newest release:
 #   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/<skill>.zip
 #   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-skills.zip
+#   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-skills-fonts.zip
 #   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-skills-runtime-windows-x64.zip
+#   https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/install.ps1
 name: release
 
 on:
@@ -13,11 +15,11 @@ permissions:
   contents: write
 
 jobs:
-  runtime:
-    uses: ./.github/workflows/runtime.yml
+  packs:
+    uses: ./.github/workflows/packs.yml
 
   release:
-    needs: runtime
+    needs: packs
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v5
@@ -25,6 +27,10 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.12"
+
+      - uses: actions/setup-node@v5
+        with:
+          node-version: "24"
 
       - name: Check the version is in CHANGELOG.md
         run: |
@@ -37,6 +43,7 @@ jobs:
         run: |
           python -I tests/test_council.py
           python -I tests/test_package.py
+          python -I tests/test_fonts.py
           python -I tests/test_install.py
 
       - name: Pack
@@ -44,13 +51,19 @@ jobs:
 
       - uses: actions/download-artifact@v8
         with:
-          name: runtime-windows-x64
+          pattern: packs-*
           path: dist
+          merge-multiple: true
 
-      - name: Checksums over everything, the runtime included
+      - name: Checksums over everything, the packs and the installers included
         run: |
+          cp install.sh install.ps1 dist/
           cd dist
-          sha256sum -- *.zip *.tar.gz > SHA256SUMS.txt
+          for f in killer-skills-fonts.zip killer-skills-fonts.tar.gz killer-skills-runtime-windows-x64.zip \
+                   killer-skills-node-windows-x64.zip killer-skills-python-windows-x64.zip; do
+            [ -f "$f" ] || { echo "missing $f"; exit 1; }
+          done
+          sha256sum -- *.zip *.tar.gz install.sh install.ps1 > SHA256SUMS.txt
           cat SHA256SUMS.txt
           ls -la
 

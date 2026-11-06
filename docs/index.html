@@ -54,7 +54,7 @@
           <code class="cmd-line">curl -fsSL https:/<wbr>/<wbr>raw.githubusercontent.com/<wbr>Real-Fruit-Snacks/<wbr>killer-skills/<wbr>main/<wbr>install.sh | sh</code>
           <button class="copy" type="button" data-copy="curl -fsSL https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.sh | sh">Copy</button>
         </div>
-        <p class="ticket-foot">Every archive is checked against the release’s SHA256 sums first. On Windows, the PowerShell line also brings the runtime (Playwright, Chromium and Mermaid, 128&nbsp;MB), so the skills download nothing later. <a href="#skills">One skill on its own</a></p>
+        <p class="ticket-foot">Every archive is checked against the release’s SHA256 sums first. Both lines bring the web fonts killer-design sets; on Windows the PowerShell line also brings Playwright, Chromium and Mermaid (128&nbsp;MB), and Node.js or Python if they’re missing, so the skills download nothing later. <a href="#skills">One skill on its own</a> · <a href="https://github.com/Real-Fruit-Snacks/killer-skills#installing-offline">Installing offline</a></p>
       </div>
     </div>
 
@@ -112,7 +112,7 @@
         <p class="does">Designs and builds a website in hand-written HTML, CSS and a little JavaScript, sets one wow moment on the first screen, then screenshots it at 390, 768 and 1440 pixels and fixes what it sees. Makes the favicon and app icons too.</p>
         <dl>
           <dt>Asks</dt><dd>Only what it can’t find in the project</dd>
-          <dt>Needs</dt><dd>Node.js, and Playwright with Chromium: the runtime on Windows, otherwise installed on first use</dd>
+          <dt>Needs</dt><dd>Node.js 20 or later, and Playwright with Chromium: the runtime on Windows, otherwise installed on first use. Fonts come from the font pack</dd>
         </dl>
         <div class="get">
           <a class="btn" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-design.zip">Download killer-design.zip</a>
@@ -136,7 +136,7 @@
         <p class="does">Rebuilds a GitHub repo page around the project’s most interesting true thing: the README, description, topics, social card, community files and workflows. Runs every claim, renders the README as GitHub will in light and dark at desktop and phone widths, and asks before anything public changes.</p>
         <dl>
           <dt>Asks</dt><dd>Scope, look, how to land the changes, whether to convene a council</dd>
-          <dt>Needs</dt><dd>Node.js, Playwright as for killer-design, and the GitHub CLI for the exact render. Offline it makes a labelled approximate one</dd>
+          <dt>Needs</dt><dd>Node.js 20 or later, Playwright as for killer-design, and the GitHub CLI for the exact render. Offline it makes a labelled approximate one</dd>
         </dl>
         <div class="get">
           <a class="btn" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-repo.zip">Download killer-repo.zip</a>
@@ -186,15 +186,15 @@
       <h2>Tested on</h2>
       <ul>
         <li>Windows 11 · Claude Code 2.1.316 · Node.js 24.20.0 · Python 3.14.2: each skill run on a real project</li>
-        <li>Ubuntu 24.04, Windows Server 2025 and macOS 26 in CI on every push: both installers, the packager and the council script</li>
-        <li>Windows Server 2025 in CI: every Chromium script run from the runtime with the network cut off</li>
+        <li>Ubuntu 24.04, Windows Server 2025 and macOS 26 in CI on every push: both installers, downloading and from a folder, the packager, fonts.mjs and the council script</li>
+        <li>Windows Server 2025 in CI, with the network cut off: every Chromium script on the packed Node.js, a page in the pack’s fonts, and the council’s tests on the packed Python</li>
         <li><em>Not</em> tested: the skills themselves on macOS or Linux, or uploaded to claude.ai</li>
       </ul>
     </div>
     <div>
       <h2>Known issues</h2>
       <ul>
-        <li>The runtime is Windows only. Elsewhere, the first screenshot installs Playwright and Chromium, which needs the network.</li>
+        <li>The runtime, Node.js and Python packs are Windows only. Elsewhere, the first screenshot installs Playwright and Chromium, which needs the network.</li>
         <li>killer-council’s reviewers work in your folder, not a sandbox. <code>council.py verify</code> catches a change after each round; nothing prevents one.</li>
         <li>A council that mixes providers needs T3 Code. Elsewhere it offers a mix of Claude models.</li>
         <li>GitHub has no API for a repo’s social preview, so killer-repo makes the card and tells you where to upload it.</li>
@@ -203,9 +203,10 @@
     <div>
       <h2>Installer settings</h2>
       <dl class="vars">
-        <dt><code>KILLER_SKILLS_VERSION</code></dt><dd>A release tag, such as <code>v1.1.0</code>. Default: the latest</dd>
+        <dt><code>KILLER_SKILLS_VERSION</code></dt><dd>A release tag, such as <code>v1.2.0</code>. Default: the latest</dd>
         <dt><code>KILLER_SKILLS_DIR</code></dt><dd>Where skills go. Default <code>~/.claude/skills</code></dd>
-        <dt><code>KILLER_SKILLS_RUNTIME</code></dt><dd><code>skip</code>: no Windows runtime</dd>
+        <dt><code>KILLER_SKILLS_CACHE</code></dt><dd>Where the packs go. Default <code>~/.cache</code></dd>
+        <dt><code>KILLER_SKILLS_RUNTIME</code></dt><dd><code>skip</code>: no packs. <code>all</code>: every pack, even with Node.js or Python here</dd>
       </dl>
     </div>
   </section>

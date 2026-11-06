@@ -1,6 +1,7 @@
 """Tests for tools/package.py. Run: python -I tests/test_package.py"""
 import hashlib
 import io
+import os
 import shutil
 import subprocess
 import sys
@@ -106,15 +107,48 @@ try:
     skill("no-front", "# No frontmatter\n")
     skill("long-desc", "---\nname: long-desc\ndescription: " + "x" * 1025 + "\n---\n")
     skill("killer-skills", "---\nname: killer-skills\ndescription: x\n---\n")
+    skill("killer-skills-fonts", "---\nname: killer-skills-fonts\ndescription: x\n---\n")
     git("add", "-A")
     r = pack(repo, tmp / "d")
     out = r.stdout + r.stderr
     check("problems stop the pack", r.returncode != 0, out)
     for frag in ["skills/wrong-name: frontmatter name is 'other-name'", "skills/no-desc: frontmatter has no description",
                  "skills/Caps: folder name must be", "skills/no-front: SKILL.md must start with frontmatter",
-                 "skills/long-desc: description is 1025 characters", "skills/killer-skills: killer-skills is the name of the bundle"]:
+                 "skills/long-desc: description is 1025 characters", "skills/killer-skills: killer-skills is the name of the bundle",
+                 "skills/killer-skills-fonts: names starting killer-skills- are the packs'"]:
         check(f"reports: {frag}", frag in out, out)
     check("nothing is written when packing fails", not (tmp / "d").exists())
+
+    # ---------- tools/packs.py writes the same bytes for the same contents
+    sys.path.insert(0, str(ROOT / "tools"))
+    import packs
+    src = tmp / "pack-src"
+    (src / "sub" / ".links").mkdir(parents=True)
+    (src / "a.txt").write_text("alpha\n" * 200)
+    (src / "sub" / "b.woff2").write_bytes(b"wOF2" + bytes(range(256)) * 8)
+    (src / "sub" / "tool.exe").write_bytes(b"MZ" + b"\0" * 64)
+    (src / "sub" / ".links" / "hash").write_text("C:/a/temp/path")
+    one, two = tmp / "one.zip", tmp / "two.zip"
+    packs.zipdir(src, one, ["sub/.links/*"])
+    for f in src.rglob("*"):
+        if f.is_file():
+            os.utime(f, (1234567890, 1234567890))   # new mtimes, same contents
+    packs.zipdir(src, two, ["sub/.links/*"])
+    check("packs.zipdir: the same contents give the same bytes", one.read_bytes() == two.read_bytes())
+    with zipfile.ZipFile(one) as z:
+        infos = {i.filename: i for i in z.infolist()}
+    check("packs.zipdir: files at the root, sorted, excludes left out", list(infos) == ["a.txt", "sub/b.woff2", "sub/tool.exe"], list(infos))
+    check("packs.zipdir: woff2 stored, text deflated",
+          infos["sub/b.woff2"].compress_type == zipfile.ZIP_STORED and infos["a.txt"].compress_type == zipfile.ZIP_DEFLATED)
+    check("packs.zipdir: one fixed date", {i.date_time for i in infos.values()} == {packs.STAMP})
+    t1, t2 = tmp / "one.tar.gz", tmp / "two.tar.gz"
+    packs.tgzdir(src, t1, ["sub/.links/*"])
+    os.utime(src / "a.txt", (1, 1))
+    packs.tgzdir(src, t2, ["sub/.links/*"])
+    check("packs.tgzdir: the same contents give the same bytes", t1.read_bytes() == t2.read_bytes())
+    with tarfile.open(t1) as tf:
+        names = tf.getnames()
+    check("packs.tgzdir: folders first, excludes left out", names == ["sub", "a.txt", "sub/b.woff2", "sub/tool.exe"], names)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
