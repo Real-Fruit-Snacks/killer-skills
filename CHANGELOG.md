@@ -2,7 +2,7 @@
 
 Each release publishes every skill on its own (`<skill>.zip`, `<skill>.tar.gz`), all of them together (`killer-skills.zip`, `killer-skills.tar.gz`), the packs (`killer-skills-fonts.zip` and `.tar.gz`, and for Windows `killer-skills-runtime-windows-x64.zip`, `killer-skills-node-windows-x64.zip` and `killer-skills-python-windows-x64.zip`), both installers and `SHA256SUMS.txt`. The asset names don't change, so `https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/<file>` always fetches the newest.
 
-## 1.4.0 (unreleased)
+## 1.4.0 (2026-11-07)
 
 Four new skills, for fifteen in all: vector graphics checked in every browser engine and by a blind viewer, refactors that prove the behaviour didn't change, tests that fail only on CI made to fail here, and issue triage where a script decides what reproduces.
 
