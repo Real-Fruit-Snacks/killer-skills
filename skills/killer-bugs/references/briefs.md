@@ -18,8 +18,8 @@ Every brief includes this block, filled in with what `bugs.py sandbox` printed f
 ```markdown
 ## Your copy of the project
 
-- **Project copy:** `<path>`. Read anything in it.
-- **Run the project's code only through:** `<run command>`. It runs from the project copy with its own home and temp folders, no credentials, and <"the network off (this machine's own addresses still work)" | "the network on">. Add `--repeat N` to count failures, `--cwd <subfolder>` to run from a subfolder, `--timeout <seconds>` to cap a run. Each run's output is saved under `logs/` next to the scratch folder.
+- **Project copy:** `<path>`. <"Read anything in it." | for the promise checker: "Run anything in it, but read only the files listed under 'What you may read'.">
+- **Run the project's code only through:** `<run command>`. It runs from the project copy with its own home and temp folders, no credentials, and <"the network off (this machine's own addresses still work)" | "the network on">. Add `--repeat N` to count failures, `--cwd <subfolder>` to run from a subfolder, `--timeout <seconds>` to cap a run, `--stdin <file>` to feed it input. Each run's output is saved under `logs/` next to the scratch folder.
 - **Scratch folder:** `<path>`. Put every file you create here.
 - Don't install anything or touch anything outside these two folders. With the network off, don't fetch anything: Windows PowerShell 5.1 and programs that open sockets themselves get past the block.
 - <Commands not to run, and why, from the side-effect check: "Don't run install.ps1 without KILLER_SKILLS_URL pointing at a local folder: it writes your PATH to the registry." Write "None." if there are none.>
@@ -38,7 +38,7 @@ A reproduction is a small script in the scratch folder that makes the bug happen
 - **Say what it saw:** print a line starting `EXPECTED:` with the right behaviour and a line starting `OBSERVED:` with what happened, then exit 1 when the bug shows and 0 when it doesn't. A script that fails without printing `OBSERVED:` proves nothing.
 - **Leave the project copy as it is:** keep everything it creates in the scratch folder, and point the project at temp folders inside it.
 - **Detect a hang itself:** run the step in a child process with its own time limit, then print `OBSERVED:` and exit 1.
-- **Run from the project copy** through the run command, reaching the scratch folder by a relative path like `../repro/empty_list.py`, so it works in a fresh copy too.
+- **Live in a folder of its own** in the scratch folder, with any helper files it needs, like `empty-list/`. Run it from the project copy through the run command by a relative path, like `../repro/empty-list/check.py`, so it works in a fresh copy too. Only that folder travels with the bug.
 - **Be as small as it can be.** If it depends on timing, run it with `--repeat 20` and give the count.
 
 It will be rerun in a fresh copy of the project, without you, to check it.
@@ -99,14 +99,15 @@ Write this JSON to `reply.json` in the scratch folder:
   "candidates": [
     {"title": "<short name>", "claim": "<what goes wrong, as behaviour someone could observe>",
      "trigger": "<the input or steps>", "expected": "<what the promise says>", "observed": "<what happened>",
-     "where": ["<the promise's id and source>"], "kind": "bug", "severity": "<high | medium | low>",
+     "where": ["<the promise's id and source>"], "kind": "<bug | mismatch>",
+     "source_kind": "<general | usage | tests | docs | changelog | inferred>", "severity": "<high | medium | low>",
      "confidence": "<low | medium | high>", "command": ["<program>", "<argument>"], "runs": "<failed>/<total> or null"}
   ],
   "covered": ["<each file you read>"]
 }
 ```
 
-`command` is your reproduction, as a list of arguments for the run command, run from the project copy. Use `null` for a broken promise you couldn't write one for. Then end with one line: how many promises, how many broken, how many reproduced.
+`command` is your reproduction, as a list of arguments for the run command, run from the project copy. Use `null` for a broken promise you couldn't write one for. `kind` is `bug` when the promise is a general rule or the program's own `--help` text, which comes from the code itself; it's `mismatch` when the promise comes from the docs, the README, a wiki or the changelog, because docs go out of date and either side could be wrong. Then end with one line: how many promises, how many broken, how many reproduced.
 ````
 
 ## Finder
@@ -158,7 +159,8 @@ Write this JSON to `reply.json` in the scratch folder:
   "candidates": [
     {
       "title": "<short name>",
-      "claim": "<what goes wrong, as behaviour someone could observe>",
+      "claim": "<what goes wrong, as behaviour someone could observe: what happens, not why>",
+      "cause": "<why it happens, if you know; kept for whoever fixes it, and kept from whoever checks it>",
       "trigger": "<the input or steps that make it happen>",
       "expected": "<what should happen instead>",
       "observed": "<what you saw when you tried it, or null>",
@@ -229,20 +231,25 @@ Before you send it: if the finder ran the trigger and saw it, put that in "How i
 
 ## Challenger
 
-````markdown
-# Challenge a bug report
+For a group of up to five proven bugs from the same area of the code; one report is a group of one.
 
-Below is a bug report, with a reproduction that makes it happen. Your job is to try to knock it down. Reports go wrong in a few ways:
+````markdown
+# Challenge bug reports
+
+Below <is a bug report | are <n> bug reports> from <the area: the files or feature>, each with a reproduction that makes it happen. Your job is to try to knock each one down, on its own. Reports go wrong in a few ways:
 
 - **Intended:** the docs, a comment, a test or a commit message says it should work this way.
 - **Unreachable:** no real user can get there; it needs input or a state that nothing produces.
 - **Wrong reproduction:** it misuses the project, tests the wrong thing, or expects the wrong value.
 - **Not this project's bug:** it comes from the environment, the sandbox, or a dependency's documented behaviour.
+- **The docs are out of date, not the code:** when a report says the code breaks a promise in the docs, the docs can be the side that's wrong. Check which changed more recently (`git log -1 --format=%cs -- <file>` for the doc and for the code), what the tests assert, and what the changelog says. If the code changed on purpose and the docs weren't updated, the code is right.
 
 If none of these holds after an honest look, the report stands. Then judge how much it matters.
 
-## The report
+## The reports
 
+<For each one:>
+### <id>
 - **Claim:** <claim>
 - **Expected:** <expected>
 - **Observed:** <observed>
@@ -255,7 +262,7 @@ If none of these holds after an honest look, the report stands. Then judge how m
 
 <sandbox block>
 
-Read anything you like: code, docs, tests, the git history. Rerun the reproduction, and change it to test your doubts.
+Read anything you like: code, docs, tests, the git history. Rerun each reproduction, and change it to test your doubts.
 
 ## Severity and likelihood
 
@@ -268,20 +275,27 @@ Read anything you like: code, docs, tests, the git history. Rerun the reproducti
 
 ## Your answer
 
-Write this JSON to `reply.json` in the scratch folder:
+Write this JSON to `reply.json` in the scratch folder, one entry per report:
 
 ```json
 {
-  "verdict": "<stands | question | knocked-down>",
-  "reason": "<the evidence: quote the doc, test, code or output that settles it>",
-  "severity": "<high | medium | low>",
-  "likelihood": "<common | occasional | rare>",
-  "question": "<only for question: what the project's owner has to decide, in one sentence>"
+  "verdicts": [
+    {
+      "id": "<the report's id>",
+      "verdict": "<stands | question | knocked-down | docs-stale>",
+      "reason": "<the evidence: quote the doc, test, code, output or git history that settles it>",
+      "severity": "<high | medium | low>",
+      "likelihood": "<common | occasional | rare>",
+      "question": "<only for question: what the project's owner has to decide, in one sentence>"
+    }
+  ]
 }
 ```
 
-Use `question` when it might be deliberate and only the owner can say: the docs are silent and either behaviour is a reasonable choice. Then end with one line: your verdict.
+Use `question` when it might be deliberate and only the owner can say: the docs are silent and either behaviour is a reasonable choice. Use `docs-stale` when the code is right and the docs describe something older. Then end with one line: how many stand.
 ````
+
+Group by area so the challenger reads that code once, and keep the group's reports otherwise unrelated: never the finder's reasoning, the `cause`, or how many finders found each.
 
 ## Code checker
 
@@ -345,10 +359,12 @@ Give it the claim and the prover's "what it would take", never the finder's reas
 ````markdown
 # Find copies of a bug
 
-A bug was proven in this project. The same mistake often appears in more than one place. Find every other place it does.
+These bugs were proven in this project. The same mistake often appears in more than one place. For each one, find every other place it does.
 
-## The bug
+## The bugs
 
+<For each confirmed high- or medium-severity bug:>
+### <id>
 - **What goes wrong:** <claim>
 - **The mistake behind it:** <the cause, in one or two sentences>
 - **Where it was found:** <where; ignore this place>

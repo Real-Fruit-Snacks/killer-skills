@@ -8,6 +8,7 @@ Commands:
   add        add one suspected bug by hand (the user's, a tool's, your own)
   merge      fold duplicates into one bug
   forward    pick the suspects to prove and challenge: worst first, within the depth's limit
+  challenges record a group challenger's verdicts, one per bug
   update     record a prover's, challenger's or fix reviewer's reply, or set fields
   list       the bugs so far
   show       one bug in full
@@ -17,6 +18,8 @@ Commands:
   decide     record a call the user should check (listed in the report)
   wait       record an outward action left for the user's OK, with its command
   findings   the bugs as JSON for a host's ReportFindings tool
+  repro      copy a bug's reproduction into an agent's sandbox
+  freshness  when each doc last changed, against the code
   report     write report.md, and summary.json for whoever reads the run next
   close      save this run's outcomes to the project's record
   clean      delete this run's sandboxes
@@ -36,6 +39,7 @@ from __future__ import annotations
 import argparse
 import datetime as dt
 import fnmatch
+import hashlib
 import importlib.util
 import json
 import re
@@ -78,16 +82,26 @@ def sandboxes_home() -> Path:
 
 
 def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = None,
-                 network: bool | None = None, env: dict | None = None) -> Path:
+                 network: bool | None = None, env: dict | None = None, path_first=()) -> Path:
     """The kit's sandbox, keeping the project's own git state: HEAD, branch and what's staged as they
     are in the project and no base commit, since bugs.py never diffs a sandbox."""
     root = box_path(cfg, name)
     kb = {"KB_SANDBOX": str(root), "KB_REPO": str(root / "repo"), "KB_REPRO": str(root / SCRATCH)}
-    root = kit.make_sandbox(cfg, ws, name, include, rev, network, {**kb, **(env or {})}, base=False, scratch=SCRATCH)
+    root = kit.make_sandbox(cfg, ws, name, include, rev, network, {**kb, **(env or {})}, base=False, scratch=SCRATCH,
+                            path_first=[str(Path(d).resolve()) for d in path_first or ()])
     if not name.startswith(NOT_AGENTS):   # one sandbox per agent, so this counts the agents
         stamp = dt.datetime.now().isoformat(timespec="seconds")
         mutate_cfg(ws, lambda c: c.setdefault("agents", []).append({"name": name, "at": stamp}))
     return root
+
+
+def script_version() -> str:
+    """A short hash of the scripts, so a run records which version of them it ran on."""
+    h = hashlib.sha1()
+    for f in ("bugs.py", "kit.py", "run.py"):
+        if (HERE / f).is_file():
+            h.update((HERE / f).read_bytes())
+    return h.hexdigest()[:10]
 
 
 def keep_scratch(box: Path, dst: Path) -> None:
@@ -96,13 +110,15 @@ def keep_scratch(box: Path, dst: Path) -> None:
 
 
 STATUSES = ("candidate", "proven", "suspected", "confirmed", "argued", "question", "dismissed",
-            "intended", "fixed", "merged", "known")
+            "intended", "stale-docs", "fixed", "merged", "known")
 SEVERITY = ("high", "medium", "low")
 LIKELIHOOD = ("common", "occasional", "rare")
 CONFIDENCE = ("low", "medium", "high")
 KINDS = ("bug", "test-gap", "mismatch")
-LIST_ORDER = ("confirmed", "fixed", "argued", "question", "proven", "candidate", "suspected", "dismissed",
-              "intended", "known", "merged")
+LIST_ORDER = ("confirmed", "fixed", "argued", "question", "proven", "candidate", "suspected", "stale-docs",
+              "dismissed", "intended", "known", "merged")
+# Sources that are agents looking on their own; the lead, the user and tools don't count as "separately".
+AGENT_SOURCE = re.compile(r"^(hunter:|promises|copy-of:|read|find|pairs)")
 # What goes on to be proven and challenged at each depth, and at most how many.
 DEPTHS = {"quick": (("high",), 5), "standard": (("high", "medium"), 15),
           "thorough": (("high", "medium", "low"), 30)}
@@ -159,13 +175,18 @@ def rank_key(b: dict):
     return (sev, like, 1 if b.get("internal") else 0, int(b["id"][1:]))
 
 
+def agent_sources(b: dict) -> set[str]:
+    """The agents that found this bug on their own: what 'found separately' counts."""
+    return {s for s in b["found_by"] if AGENT_SOURCE.match(s)}
+
+
 # ---------------------------------------------------------------- the project and its scope
 
 # ---------------------------------------------------------------- sandboxes
 
 def runs_total(runs) -> int:
     m = re.match(r"\s*(\d+)\s*(?:/|of)\s*(\d+)", str(runs or ""))
-    return max(1, min(50, int(m.group(2)))) if m else 1
+    return max(1, min(10, int(m.group(2)))) if m else 1   # enough to catch a flaky one; hangs make more costly
 
 
 def verify_repro(ws: Path, cfg: dict, bid: str, repro_dir: str | None, cmd: list[str], repeat: int,
@@ -242,6 +263,8 @@ def cmd_init(a) -> None:
         "exclude": a.exclude or [],
         "env": parse_env(a.env),
         "depth": a.depth,
+        "path_first": [str(Path(d).resolve()) for d in a.path_first or []],
+        "script": script_version(),
         "sandboxes_home": str(sandboxes_home()),
         "sandboxes": {},
         "agents": [],
@@ -269,7 +292,8 @@ def cmd_init(a) -> None:
 
 def cmd_sandbox(a) -> None:
     ws, cfg = load(a)
-    root = make_sandbox(cfg, ws, a.name, a.include or [], a.rev, True if a.net else None, parse_env(a.env))
+    root = make_sandbox(cfg, ws, a.name, a.include or [], a.rev, True if a.net else None, parse_env(a.env),
+                        a.path_first or [])
     net = cfg["network"] or a.net
     print(f"Sandbox {a.name} is ready.")
     print(kit.sandbox_text(root, net, a.rev, SCRATCH))
@@ -294,9 +318,49 @@ def new_bug(db: dict, c: dict, source: str) -> dict | None:
         "status": "candidate",
         "notes": [],
     }
+    # Why it happens is for the lead and whoever fixes it; provers and challengers get only the claim.
+    if str(c.get("cause") or "").strip():
+        b["cause"] = str(c["cause"]).strip()
+    if c.get("source_kind"):
+        b["source_kind"] = str(c["source_kind"])
+    # A promise read between the lines isn't the owner's promise until they confirm it.
+    if c.get("source_kind") == "inferred" or any("inferred" in str(w).lower() for w in b["where"]):
+        b["inferred"] = True
     db["next"] += 1
     db["bugs"].append(b)
     return b
+
+
+def own_repro(ws: Path, bid: str, scratch: str | None, cmd: list[str]) -> tuple[str | None, str | None]:
+    """Copy just this bug's reproduction out of the finder's scratch folder into repros/<bid>/.
+
+    Whoever gets it later (a challenger, a fix reviewer) then can't see the finder's other findings.
+    The command names its files as ../repro/<folder or file>; those are what's copied."""
+    if not scratch or not (ws / scratch).is_dir():
+        return None, None
+    picked = []
+    for arg in cmd:
+        a = str(arg).replace("\\", "/")
+        i = a.find(f"../{SCRATCH}/")
+        if i >= 0:
+            first = a[i + len(SCRATCH) + 4:].split("/")[0]
+            if first and (ws / scratch / first).exists() and first not in picked:
+                picked.append(first)
+    if not picked:   # the command doesn't name its files: keep the whole folder, as before
+        return scratch, None
+    dst = ws / "repros" / bid
+    rmtree(dst)
+    for first in picked:
+        src = ws / scratch / first
+        if src.is_dir():
+            shutil.copytree(src, dst / first, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        else:
+            (dst).mkdir(parents=True, exist_ok=True)
+            shutil.copy2(src, dst / first)
+    loose = [f for f in picked if (ws / scratch / f).is_file()]
+    note = (f"kept only {', '.join(loose)} from the finder's scratch folder; a reproduction in a folder of "
+            "its own carries its helpers with it") if loose else None
+    return f"repros/{bid}", note
 
 
 def normalize(path: str, top: str) -> str:
@@ -380,7 +444,9 @@ def cmd_collect(a) -> None:
                               "observed": c.get("observed"), "runs": c.get("runs"),
                               "entry_point": c.get("entry_point"), "notes": "the finder's own reproduction",
                               "by": source}
-                b["repro_dir"] = scratch
+                b["repro_dir"], note = own_repro(ws, b["id"], scratch, cmd)
+                if note:
+                    b["notes"].append(note)
             added.append(b["id"])
         return added, empty
     added, empty = mutate(ws, add)
@@ -469,6 +535,48 @@ def cmd_merge(a) -> None:
     print(f"{keep['id']} now stands for {', '.join(a.duplicates)}; found by {len(keep['found_by'])} finders")
 
 
+def challenge_changes(data: dict) -> dict:
+    """What one challenger verdict changes on its bug."""
+    v = data.get("verdict")
+    if v not in ("stands", "question", "knocked-down", "docs-stale"):
+        fail(f"a challenger's verdict is stands, question, knocked-down or docs-stale, not {v!r}")
+    changes = {"challenge": {k: data.get(k) for k in ("verdict", "reason", "severity", "likelihood", "question")}}
+    if data.get("severity") in SEVERITY:
+        changes["severity"] = data["severity"]
+    if data.get("likelihood") in LIKELIHOOD:
+        changes["likelihood"] = data["likelihood"]
+    # docs-stale: the code does what it should and the docs describe something older. It's a finding
+    # for the docs (killer-docs), and the code is never changed to match them.
+    changes["status"] = {"stands": "confirmed", "question": "question", "knocked-down": "dismissed",
+                         "docs-stale": "stale-docs"}[v]
+    return changes
+
+
+def cmd_challenges(a) -> None:
+    """Record a group challenger's verdicts: one entry per bug in its reply's "verdicts"."""
+    ws, cfg = load(a)
+    path, box = reply_source(a, cfg)
+    entries = [e for e in as_list(read_reply(path).get("verdicts")) if isinstance(e, dict)]
+    if not entries:
+        fail(f"{path} has no \"verdicts\" list")
+    db = load_bugs(ws)
+    planned = [(get_bug(db, str(e.get("id") or "")), challenge_changes(e)) for e in entries]   # all valid, or none
+
+    def apply(db):
+        out = []
+        for b, changes in planned:
+            x = get_bug(db, b["id"])
+            x.update(changes)
+            out.append(x)
+        return out
+    done = mutate(ws, apply)
+    if box and not a.keep:
+        drop_sandbox(ws, cfg, a.sandbox)
+    for b in done:
+        extra = "/".join(x for x in (b.get("severity"), b.get("likelihood")) if x)
+        print(f"{b['id']}: {b['status']}" + (f" ({extra})" if extra else "") + f". {b['title']}")
+
+
 def cmd_update(a) -> None:
     ws, cfg = load(a)
     current = get_bug(load_bugs(ws), a.id)
@@ -509,14 +617,7 @@ def cmd_update(a) -> None:
                     print("warning: the reproduction failed without an OBSERVED: line (or timed out). Read the "
                           "output above; if it isn't the bug, set --status suspected.")
         elif a.role == "challenger":
-            if v not in ("stands", "question", "knocked-down"):
-                fail(f"a challenger's verdict is stands, question or knocked-down, not {v!r}")
-            changes["challenge"] = {k: data.get(k) for k in ("verdict", "reason", "severity", "likelihood", "question")}
-            if data.get("severity") in SEVERITY:
-                changes["severity"] = data["severity"]
-            if data.get("likelihood") in LIKELIHOOD:
-                changes["likelihood"] = data["likelihood"]
-            changes["status"] = {"stands": "confirmed", "question": "question", "knocked-down": "dismissed"}[v]
+            changes.update(challenge_changes(data))
         elif a.role == "code-check":
             # For a bug that can't be run here: a chain from an entry point to the failure, checked by
             # reading. One that holds is "argued": reported apart from the proven bugs, never as one.
@@ -545,6 +646,9 @@ def cmd_update(a) -> None:
         changes["title"] = a.title
     if a.record:
         changes["record"] = a.record
+    if a.confirm_promise:
+        changes["inferred"] = False
+        notes.append("the user confirmed the inferred promise")
     if a.note:
         notes.append(a.note)
 
@@ -768,9 +872,14 @@ def cmd_clean(a) -> None:
 
 def finders(b: dict) -> str:
     names = [re.sub(r"^hunter:", "", s).split("#")[0] for s in b["found_by"]]
-    distinct = len(set(b["found_by"]))
-    lead = f"{distinct} finders separately" if distinct > 1 else "1 finder"
+    distinct = len(agent_sources(b))   # the lead, the user and tools aren't separate finders
+    lead = f"{distinct} finders separately" if distinct > 1 else f"{distinct or 'no'} finder{'s' if not distinct else ''}"
     return f"{lead} ({', '.join(dict.fromkeys(names))})"
+
+
+def short(text, limit: int = 400) -> str:
+    text = " ".join(str(text or "").split())
+    return text if len(text) <= limit else text[:limit].rsplit(" ", 1)[0] + " …"
 
 
 def bug_block(b: dict) -> list[str]:
@@ -797,8 +906,8 @@ def bug_block(b: dict) -> list[str]:
     if b["where"]:
         out.append(f"- **Where:** {', '.join(b['where'])}")
     out.append(f"- **Found by:** {finders(b)}")
-    if c.get("reason"):
-        out.append(f"- **Why it stands:** {c['reason']}")
+    if c.get("reason"):   # the full reason is in bugs.json; the report keeps it readable
+        out.append(f"- **Why it stands:** {short(c['reason'])}")
     fc = b.get("fix_check")
     if fc:
         out.append(f"- **Fix check:** {fc['verdict']} ({fc['check']})")
@@ -813,25 +922,32 @@ def cmd_forward(a) -> None:
     levels, limit = DEPTHS[depth]
     limit = a.limit or limit
     bugs = load_bugs(ws)["bugs"]
-    pool = [b for b in bugs if b["status"] in ("candidate", "proven") and not b.get("challenge")]
+    # The limit is for the whole run: what's been challenged already (copies included) comes out of it.
+    used = sum(1 for b in bugs if b.get("challenge"))
+    room = max(0, limit - used)
+    waiting = [b for b in bugs if b["status"] in ("candidate", "proven") and not b.get("challenge")]
+    unconfirmed = [b["id"] for b in waiting if b.get("inferred")]
+    pool = [b for b in waiting if not b.get("inferred")]
 
-    def key(b):   # worst first; then found by more finders separately; then surer; then already proven
-        return (SEVERITY.index(level(b)), -len(set(b["found_by"])), -CONFIDENCE.index(b["confidence"]),
+    def key(b):   # worst first; then found by more agents separately; then surer; then already proven
+        return (SEVERITY.index(level(b)), -len(agent_sources(b)), -CONFIDENCE.index(b["confidence"]),
                 0 if b["status"] == "proven" else 1, int(b["id"][1:]))
     untriaged = [b["id"] for b in pool if level(b) not in SEVERITY]
     eligible = sorted([b for b in pool if level(b) in levels], key=key)
-    chosen, over = eligible[:limit], eligible[limit:]
+    chosen, over = eligible[:room], eligible[room:]
     below = [b["id"] for b in pool if level(b) in SEVERITY and level(b) not in levels]
     code = [b["id"] for b in bugs if b["status"] == "suspected" and b.get("impractical")
             and level(b) in levels and not b.get("challenge")]
     plan = {"depth": depth, "limit": limit, "chosen": [b["id"] for b in chosen],
             "prove": [b["id"] for b in chosen if b["status"] == "candidate"],
             "challenge": [b["id"] for b in chosen if b["status"] == "proven"],
-            "code_check": code, "over": [b["id"] for b in over], "below": below, "untriaged": untriaged}
+            "code_check": code, "over": [b["id"] for b in over], "below": below, "untriaged": untriaged,
+            "unconfirmed": unconfirmed, "used": used}
     with locked(ws):
         save_json(ws / "forward.json", plan)
     names = ", ".join(levels)
-    print(f"Depth {depth}: {names} severity, at most {limit}. Going forward: {len(chosen)}.")
+    print(f"Depth {depth}: {names} severity, at most {limit} in the run ({used} challenged already). "
+          f"Going forward: {len(chosen)}.")
     print(f"  needs a prover:       {' '.join(plan['prove']) or '-'}")
     print(f"  ready for challenge:  {' '.join(plan['challenge']) or '-'}")
     if code:
@@ -840,15 +956,20 @@ def cmd_forward(a) -> None:
         print(f"  over the limit:       {' '.join(plan['over'])}  (listed in the report, not tried)")
     if below:
         print(f"  below this depth:     {len(below)} suspect{'s' if len(below) != 1 else ''}, listed in the report")
+    if unconfirmed:
+        print(f"  promise to confirm:   {' '.join(unconfirmed)}  (inferred, so they wait for the user: "
+              "update --confirm-promise)")
     if untriaged:
         print(f"warning: rate these first with update --triage: {' '.join(untriaged)}")
 
 
 def first_location(b: dict, top: str) -> tuple[str, int | None]:
+    """The first file:line in a bug's locations. A path may contain dashes (Get-RepoList.ps1)."""
     for w in b["where"]:
-        m = re.search(r"([^\s(),;`'\"]+?)(?::(\d+))?(?:[-:,\s]|$)", str(w))
-        if m and ("/" in m.group(1) or "." in m.group(1)):
-            return normalize(m.group(1), top), int(m.group(2)) if m.group(2) else None
+        for tok in re.split(r"[\s,;()`'\"]+", str(w)):
+            m = re.match(r"(.+?)(?::(\d+)(?:-\d+)?)?:?$", tok)
+            if m and ("/" in m.group(1) or "." in m.group(1)) and not re.fullmatch(r"[A-Za-z]", m.group(1)):
+                return normalize(m.group(1), top), int(m.group(2)) if m.group(2) else None
     return ".", None
 
 
@@ -870,6 +991,78 @@ def cmd_findings(a) -> None:
             item["line"] = line
         out.append(item)
     print(json.dumps(out, indent=2, ensure_ascii=False))
+
+
+def cmd_repro(a) -> None:
+    """Copy bugs' reproductions into an agent's sandbox, and print how to run each there."""
+    ws, cfg = load(a)
+    db = load_bugs(ws)
+    bugs = [get_bug(db, i) for i in a.ids]
+    box = kit.find_sandbox(cfg, a.into)
+    dest = box / SCRATCH
+    taken: dict[str, str] = {}
+    for b in bugs:   # check first: two bugs' files under one name would overwrite each other
+        src = ws / b["repro_dir"] if b.get("repro_dir") else None
+        for entry in (sorted(p.name for p in src.iterdir()) if src and src.is_dir() else []):
+            if entry in taken:
+                fail(f"{b['id']} and {taken[entry]} both have a reproduction file or folder called {entry}; "
+                     "give them separate challengers")
+            taken[entry] = b["id"]
+    for b in bugs:
+        cmd = as_cmd((b.get("proof") or {}).get("command"))
+        src = ws / b["repro_dir"] if b.get("repro_dir") else None
+        if src and src.is_dir():
+            shutil.copytree(src, dest, dirs_exist_ok=True, ignore=shutil.ignore_patterns("__pycache__", "*.pyc"))
+        if cmd:
+            print(f"{b['id']}: " + kit.run_command_line(box).replace("<command>", " ".join(cmd)))
+        else:
+            print(f"warning: {b['id']} has no reproduction command")
+    print(f"Copied into {dest}.")
+
+
+def is_doc(f: str) -> bool:
+    low = f.lower()
+    return low.endswith((".md", ".markdown", ".rst", ".adoc", ".txt")) or low.split("/")[0] in ("docs", "doc", "wiki", "man")
+
+
+def cmd_freshness(a) -> None:
+    """When each doc last changed, against the code. Docs far behind the code may be out of date."""
+    ws, cfg = load(a)
+    top = Path(cfg["repo"])
+    if not cfg["git"] or not kit.has_head(top):
+        fail("freshness needs a git repository with commits")
+    files = kit.scope_files(ws)
+    docs = [f for f in files if is_doc(f)]
+    if not docs:
+        print("No docs in scope.")
+        return
+    rows = []
+    for d in docs:
+        last = git(top, "log", "-1", "--format=%H %cs", "--", d, check=False).strip()
+        if not last:
+            rows.append({"doc": d, "changed": "not committed", "code_commits_since": 0})
+            continue
+        sha, date = last.split()
+        log = git(top, "log", "--format=@%H", "--name-only", f"{sha}..HEAD", check=False)
+        since, touched = 0, False
+        for line in log.splitlines() + ["@"]:
+            if line.startswith("@"):
+                since += touched
+                touched = False
+            elif line.strip() and not is_doc(line.strip()):
+                touched = True
+        rows.append({"doc": d, "changed": date, "code_commits_since": since})
+    rows.sort(key=lambda r: -r["code_commits_since"])
+    with locked(ws):
+        save_json(ws / "freshness.json", rows)
+    width = max(len(r["doc"]) for r in rows)
+    for r in rows:
+        print(f"{r['doc']:<{width}}  {r['changed']:<13}  {r['code_commits_since']} code commit"
+              f"{'s' if r['code_commits_since'] != 1 else ''} since")
+    stale = [r["doc"] for r in rows if r["code_commits_since"] >= a.behind]
+    if stale:
+        print(f"Behind the code by {a.behind}+ commits: {', '.join(stale)}. Their promises are the likeliest to be "
+              "out of date: tell the promise checker to lean on general rules and --help text for them.")
 
 
 def role_counts(cfg: dict) -> dict:
@@ -915,6 +1108,7 @@ def cmd_report(a) -> None:
     by = lambda *s: sorted([b for b in bugs if b["status"] in s], key=rank_key)
     confirmed, questions, argued = by("confirmed", "fixed"), by("question"), by("argued")
     dismissed, known, unchallenged = by("dismissed", "intended"), by("known"), by("proven")
+    stale = by("stale-docs")
     open_ = by("suspected", "candidate")
     plan = load_json(ws / "forward.json", {})
     over = set(plan.get("over", []))
@@ -932,7 +1126,8 @@ def cmd_report(a) -> None:
              + (f", {len(argued)} argued but not reproduced" if argued else "")
              + f", {plural(len(questions), 'question')} for you, {len(unchallenged)} reproduced but not challenged, "
              f"{len(suspected)} suspected but not proven, {len(low)} low-severity suspicions not checked, "
-             f"{len(dismissed)} dismissed" + (f", {len(known)} already on record" if known else "") + ".", ""]
+             f"{len(dismissed)} dismissed" + (f", {len(stale)} places where the docs are out of date" if stale else "")
+             + (f", {len(known)} already on record" if known else "") + ".", ""]
     lines += ["## Proven bugs", ""]
     lines += sum((bug_block(b) for b in confirmed), []) or ["None.", ""]
     if argued:
@@ -970,10 +1165,18 @@ def cmd_report(a) -> None:
     if low:
         lines += ["## Low severity, not checked", "", "Finders rated these minor, so nobody tried to reproduce them.", ""]
         lines += [f"- **{b['id']}. {b['title']}**: {b['claim']}" for b in low] + [""]
+    if stale:
+        lines += ["## Docs out of date", "",
+                  "Here the code does what it should, and the docs describe something older. These are findings "
+                  "for the docs (killer-docs can fix them); the code was left alone.", ""]
+        for b in stale:
+            why = short((b.get("challenge") or {}).get("reason"))
+            lines.append(f"- **{b['id']}. {b['title']}**: {b['claim']}" + (f" *{why}*" if why else ""))
+        lines.append("")
     if dismissed:
         lines += ["## Dismissed", ""]
         for b in dismissed:
-            why = (b.get("challenge") or {}).get("reason") or ("intended, per you" if b["status"] == "intended" else "")
+            why = short((b.get("challenge") or {}).get("reason")) or ("intended, per you" if b["status"] == "intended" else "")
             lines.append(f"- **{b['id']}. {b['title']}**: {why}")
         lines.append("")
     if known:
@@ -1016,6 +1219,9 @@ def cmd_report(a) -> None:
                                            if roles else ""),
               f"- **Time:** started {cfg['created'].replace('T', ' ')}, this report "
               f"{int(took.total_seconds() // 3600)} h {int(took.total_seconds() % 3600 // 60)} min later",
+              f"- **Scripts:** version {cfg.get('script') or 'unrecorded'}"
+              + (f"; they've changed since the run began (now {script_version()})"
+                 if cfg.get("script") and cfg["script"] != script_version() else ""),
               f"- **Run folder:** `{ws}`", ""]
     (ws / "report.md").write_text("\n".join(lines), encoding="utf-8")
     branch, commits = run_commits(cfg)
@@ -1023,7 +1229,11 @@ def cmd_report(a) -> None:
                 + (f", {len(argued)} argued" if argued else "")
                 + (f", {len(unchallenged)} reproduced but not challenged" if unchallenged else "")
                 + (f", {plural(len(questions), 'question')} for you" if questions else ""))
-    status = "partial" if questions or unchallenged else "done"
+    # Partial means something this depth meant to settle is unsettled, not that low bugs (which a
+    # standard run never challenges) are left unchallenged.
+    settles = DEPTHS[depth][0]
+    status = "partial" if (questions or [b for b in unchallenged if level(b) in settles]
+                           or [b for b in suspected if b["id"] in over]) else "done"
     save_json(ws / "summary.json", {
         "skill": "killer-bugs", "status": status, "headline": headline, "report": str(ws / "report.md"),
         "branch": branch if commits else None, "commits": commits,
@@ -1031,7 +1241,8 @@ def cmd_report(a) -> None:
         "waiting": [w["text"] + (f": {w['command']}" if w.get("command") else "") for w in waiting],
         "numbers": {"proven": len(confirmed), "fixed": fixed, "argued": len(argued), "questions": len(questions),
                     "unchallenged": len(unchallenged), "suspected": len(suspected), "low_unchecked": len(low),
-                    "dismissed": len(dismissed), "over_limit": len(over)},
+                    "dismissed": len(dismissed), "over_limit": len(over), "stale_docs": len(stale)},
+        "script": cfg.get("script"),
         "agents": {"total": agents, "by_role": roles}})
     print(f"Wrote {ws / 'report.md'}: {len(confirmed)} proven, {len(questions)} questions, {len(unchallenged)} "
           f"not challenged, {len(suspected)} suspected, {len(low)} low and unchecked, {len(dismissed)} dismissed.")
@@ -1064,7 +1275,9 @@ def main(argv=None) -> None:
                    help="what happens once bugs are proven (default ask)")
     s.add_argument("--include", nargs="*", help="ignored paths every sandbox needs, like node_modules")
     s.add_argument("--exclude", nargs="*", help="leave these out of scope, like vendor/ '*.svg' LICENSE")
-    s.add_argument("--env", nargs="*", help="NAME=VALUE set in every sandbox")
+    s.add_argument("--env", nargs="*", help="NAME=VALUE set in every sandbox; {sandbox} is each one's own folder")
+    s.add_argument("--path-first", nargs="*", help="folders put ahead of PATH in every sandbox, for stand-ins "
+                   "like a gh that refuses")
     s.add_argument("--depth", choices=list(DEPTHS), default="standard",
                    help="how much gets proven: quick (high, 5), standard (high and medium, 15), thorough (all, 30)")
     s.add_argument("--workspace", "-w", help="use this run folder instead of the default")
@@ -1075,7 +1288,8 @@ def main(argv=None) -> None:
     s.add_argument("--include", nargs="*", help="ignored paths to copy too, like node_modules")
     s.add_argument("--rev", help="copy this commit or tag instead of the working tree")
     s.add_argument("--net", action="store_true", help="allow the network in this sandbox")
-    s.add_argument("--env", nargs="*", help="NAME=VALUE set in this sandbox")
+    s.add_argument("--env", nargs="*", help="NAME=VALUE set in this sandbox; {sandbox} is its folder")
+    s.add_argument("--path-first", nargs="*", help="folders put ahead of PATH in this sandbox")
 
     s = cmd("collect", cmd_collect, "Add the suspected bugs from a finder's reply, and verify its reproductions.")
     s.add_argument("reply", nargs="?", help="a reply saved to a file (or use --sandbox)")
@@ -1105,6 +1319,18 @@ def main(argv=None) -> None:
 
     cmd("findings", cmd_findings, "Print the bugs as JSON for a host's ReportFindings tool.")
 
+    s = cmd("repro", cmd_repro, "Copy bugs' reproductions into an agent's sandbox and print how to run them.")
+    s.add_argument("ids", nargs="+", help="one bug, or a challenger's group")
+    s.add_argument("--into", required=True, help="the sandbox, like challenge-B3")
+
+    s = cmd("freshness", cmd_freshness, "When each doc last changed, against the code.")
+    s.add_argument("--behind", type=int, default=10, help="flag docs this many code commits behind (default 10)")
+
+    s = cmd("challenges", cmd_challenges, "Record a group challenger's verdicts, one per bug.")
+    s.add_argument("reply", nargs="?", help="a reply saved to a file (or use --sandbox)")
+    s.add_argument("--sandbox", help="read reply.json from this sandbox, then delete it")
+    s.add_argument("--keep", action="store_true", help="keep the sandbox afterwards")
+
     s = cmd("update", cmd_update, "Record a reply about a bug, or set its fields.")
     s.add_argument("id")
     s.add_argument("--from", dest="reply", help="a reply saved to a file")
@@ -1119,6 +1345,8 @@ def main(argv=None) -> None:
     s.add_argument("--triage", help="your severity guess before a challenger has rated it")
     s.add_argument("--title")
     s.add_argument("--record", help="the record entry this bug matches, like R3")
+    s.add_argument("--confirm-promise", action="store_true",
+                   help="the user confirmed the inferred promise this suspect rests on; it can go forward now")
     s.add_argument("--note")
 
     s = cmd("list", cmd_list, "List the bugs so far.")

@@ -60,12 +60,19 @@ If the user wants a seat, ask for their suspicions or promises in chat after the
 3. **The side-effect check.** Search the code agents will run for writes that environment variables don't redirect:
    - the Windows registry, and the user's or system PATH;
    - services, scheduled tasks, startup entries and shortcuts;
-   - global package installs, and absolute paths into the real home folder.
+   - global package installs, and absolute paths into the real home folder;
+   - folders the code asks the operating system for directly, which no environment variable redirects: `[Environment]::GetFolderPath(...)` in PowerShell and .NET, `SHGetKnownFolderPath`, or a path into the user's profile written out in full. Code that does this reads and writes the real profile from inside a sandbox.
 
-   Also look for anything that reaches the network. For each one, find the project's test hook (a URL override, a dry-run flag, an environment variable its tests use) and put it in the facts block. In every sandbox block, list the commands agents must not run, with the reason.
-4. **Run the checkers the project already uses** (its linters, type checker, compiler warnings) if they're installed. Never install one. Findings about behaviour become candidates with `--source tool:<name>`; style findings don't.
-5. **Write the facts block** every brief shares: what the project is, who uses it, and the commands that build, run and test it in a sandbox. Keep it to facts; your guesses about where the bugs are stay out.
-6. **Announce** in one line, then carry on:
+   Also look for anything that reaches the network, and for tools that act on the user's accounts (`gh`, `az`, `aws`, `git push`). For each one, use the project's own test hook (a URL override, a dry-run flag, an environment variable its tests use) and put it in the facts block. Three things help where there's none:
+   - **A trap folder per sandbox:** `init --env RFS_PROJECTS={sandbox}/projects` points a setting at a folder inside each sandbox (`{sandbox}` is that sandbox's own folder), so every agent gets its own and none reaches the real one.
+   - **A stand-in ahead on PATH:** put a `gh` (or `gh.cmd`) that prints a refusal and exits non-zero in a folder, and pass it with `init --path-first <folder>`. Every sandbox finds it before the real tool.
+   - **Input for interactive commands:** `run.py --stdin <file>` feeds a command its answers, so nobody has to override `Read-Host` by hand.
+
+   In every sandbox block, list the commands agents must not run, with the reason.
+4. **Check how current the docs are:** `bugs.py freshness -w <run>` lists each doc in scope with when it last changed and how many code commits have come since. Docs well behind the code are where promises go stale. Name them in the promise checker's brief and tell it to lean on the general rules and `--help` text for what they cover.
+5. **Run the checkers the project already uses** (its linters, type checker, compiler warnings) if they're installed. Never install one. Findings about behaviour become candidates with `--source tool:<name>`; style findings don't.
+6. **Write the facts block** every brief shares: what the project is, who uses it, and the commands that build, run and test it in a sandbox. Keep it to facts; your guesses about where the bugs are stay out.
+7. **Announce** in one line, then carry on:
    > killer-bugs: whole project (57 files) · promise checker and 2 read-throughs checking 5 kinds of bug · then the worst 15 high- and medium-severity suspects proven and challenged, about 15 to 20 agents · report, then ask · network off.
 
 ## 3. Find
@@ -92,7 +99,8 @@ py <skill-dir>/scripts/bugs.py collect -w <run> --sandbox read-core --source hun
 - **Merge** candidates that are the same bug (the same cause, not just the same file): `bugs.py merge -w <run> <keep> <duplicates...>`. A working reproduction carries over to the kept one. A bug found separately by two finders is the strongest early signal. The report says so.
 - **Add the user's suspicions** with `bugs.py add --source user --severity <guess>`.
 - **Check the severities.** Finders rate their own finds; set a better guess with `bugs.py update -w <run> B7 --triage high` where one is plainly off, and rate any that have none. Rate by what happens to a user: lost or overwritten data, leaked secrets and false success are high, whatever the code looks like.
-- **Inferred promises:** a broken promise marked "inferred" isn't a candidate until the user confirms the promise. Ask about them in one batch.
+- **Inferred promises:** `collect` flags a suspect that rests on an inferred promise, and `forward` holds it back until the user confirms the promise. Ask about them in one batch; `update B7 --confirm-promise` releases one.
+- **Claims and causes:** a finder's `claim` says what happens; its `cause` says why, and is kept apart. Provers and challengers get only the claim. If a claim still argues the cause, rewrite it as the behaviour before briefing them.
 - **Coverage:** run `bugs.py coverage -w <run>`. If files that matter went unread, send one more read-through at them.
 
 Then pick what goes forward:
@@ -123,15 +131,26 @@ py <skill-dir>/scripts/bugs.py update -w <run> B3 --as prover --sandbox prove-B3
 
 ## 6. Challenge
 
-One fresh challenger per proven bug going forward, in its own sandbox. Copy the reproduction (`<run>/repros/B3/`, or the finder's `<run>/scratch/<sandbox>/`) into its scratch folder first. Record it with `update B3 --as challenger --sandbox challenge-B3`. The verdict sets the status:
+One fresh challenger per **group** of up to five proven bugs going forward, from the same area of the code (the same files or feature), so it reads that code once. Each sandbox is `challenge-<n>`. Copy the group's reproductions in with `bugs.py repro -w <run> B3 B7 B9 --into challenge-1`; it refuses when two bugs' files share a name, and then those go to separate challengers. A bug that stands alone in its area gets a challenger of its own (`update B3 --as challenger --sandbox challenge-B3`). Record a group with:
+
+```
+py <skill-dir>/scripts/bugs.py challenges -w <run> --sandbox challenge-1
+```
+
+Each bug gets its own verdict, which sets its status:
 
 - `stands`: confirmed, with severity and likelihood
 - `question`: it might be deliberate. Ask the user, in one batch at the end. Their answer makes it `--status confirmed` or `--status intended`.
 - `knocked-down`: dismissed, with the reason in the report
+- `docs-stale`: the code does what it should and the docs describe something older. The bug goes to the report's "Docs out of date" section, for killer-docs, and the code is never changed to match the docs.
+
+A suspect from the promise checker is a disagreement between the docs and the code, and either could be wrong. The challenger decides which, from which one changed more recently in git, what the tests assert and what the changelog says.
 
 ## 7. Copies
 
-For each confirmed high- or medium-severity bug, write down the mistake behind it in a sentence or two. Send a copy finder with the bug's reproduction in its scratch folder. Collect it with `--source copy-of:B3`; its adapted reproductions are rerun like any finder's. A copy that reproduces is the same mistake, so it doesn't need its own challenger. Mark it `update Bn --status confirmed --severity <the original's> --note "copy of B3"`. That doesn't hold when it sits somewhere the behaviour might be intended, and then it gets a challenger. Copies in other projects the user named stay suspected, with their paths: they get proven in a run on that project. Don't send copy finders after low-severity bugs.
+Send **one** copy finder for the run, after the challenges: brief it with every confirmed high- or medium-severity bug, each with the mistake behind it in a sentence or two and its reproduction (`bugs.py repro ... --into copy-1`). Collect it with `--source copy-of:<bugs>`; its adapted reproductions are rerun like any finder's. Then run `forward` again: copies compete for what's left of the depth's limit, like any suspect.
+
+A copy that reproduces, in the same kind of code as the bug it copies, is the same mistake, so it doesn't need a challenger of its own. Mark it `update Bn --status confirmed --severity <the copy finder's rating> --note "copy of B3"`. Use the copy finder's rating rather than the original's: the same mistake can matter less elsewhere. A copy somewhere the behaviour might be intended goes to a challenger. Copies in other projects the user named stay suspected, with their paths: they get proven in a run on that project. Don't look for copies of low-severity bugs.
 
 ## 8. Report
 
@@ -177,7 +196,7 @@ Work on a new local branch, `killer-bugs/<date>`. For each bug, worst first:
 5. **Fresh fix review:** a fix reviewer gets the claim, the reproduction and the diff, and nothing of your reasoning. Fix what it finds, then run steps 3 and 4 again.
 6. **Commit** that one fix with a plain message saying what was wrong and what changed, then `bugs.py update -w <run> B3 --status fixed`. Nothing is pushed.
 
-A bug the user marked intended, or an open question, never gets "fixed". When all fixes are in, run the final pass: one finder over the branch's combined diff, with the lens from `references/finders.md`. Anything it finds goes through triage like any other candidate. Rerun `report`.
+A bug the user marked intended, an open question, or a `stale-docs` finding never gets "fixed" in the code. For stale docs, offer killer-docs. When all fixes are in, run the final pass: one finder over the branch's combined diff, with the lens from `references/finders.md`. Anything it finds goes through triage like any other candidate. Rerun `report`.
 
 Offer to keep the promise checker's tests in the project as a spec, so a future change that breaks a promise fails the test suite. If the run turned up test gaps (bugs the suite never noticed), offer killer-tests: it finds the rest of the code the tests don't really check, and proves each new test catches a fault.
 

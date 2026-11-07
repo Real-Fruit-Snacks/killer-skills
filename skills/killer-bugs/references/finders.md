@@ -110,7 +110,7 @@ Paste each kind's lens, "Look for" list and probe into the briefs as they are.
 - assertions about mocks instead of behaviour
 - tests that never run: skipped, not collected, or named so the runner misses them
 - important behaviour no test touches
-**Probe:** break the code on purpose in your copy, one small change at a time. Flip a comparison, return early, drop a line. Then run the tests. A change no test notices is a candidate of kind `test-gap`, with the change as its trigger.
+**Probe:** break the code on purpose in your copy, one small change at a time. Flip a comparison, return early, drop a line. Then run the tests. A change no test notices is a candidate of kind `test-gap`, with the change as its trigger. If the project's test runner isn't installed here (and installing isn't allowed), say so, then work it out by reading: for each change, find the assertion that would catch it, and report the ones with none, at low confidence.
 **Recommend it when:** the project has tests.
 
 ## Security and untrusted input

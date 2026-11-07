@@ -272,7 +272,7 @@ try:
     check("update: a question for the user", "B4: question" in out, out)
     chal.write_text(json.dumps({"verdict": "maybe"}))
     out, _ = bugs("update", "-w", ws, "B4", "--from", chal, "--as", "challenger", ok=(2,))
-    check("update: an unknown verdict is refused", "stands, question or knocked-down" in out, out)
+    check("update: an unknown verdict is refused", "stands, question, knocked-down or docs-stale" in out, out)
     out, _ = bugs("list", "-w", ws)
     check("list: by status, then rank",
           out.index("B1") < out.index("B4") < out.index("B2") < out.index("B5") < out.index("B3"), out)
@@ -384,7 +384,7 @@ try:
     db3 = json.loads((ws3 / "bugs.json").read_text())
     check("collect: a reproduction that shows makes it proven; one that doesn't stays a candidate, with a note",
           db3["bugs"][0]["status"] == "proven" and db3["bugs"][1]["status"] == "candidate"
-          and "didn't show the bug" in db3["bugs"][1]["notes"][0], [b["status"] for b in db3["bugs"]])
+          and any("didn't show the bug" in n for n in db3["bugs"][1]["notes"]), [b["status"] for b in db3["bugs"]])
     out, _ = bugs("list", "-w", ws3)
     check("list: severity guesses show until a challenger rates them", "~medium" in out and "~low" in out, out)
     out, _ = bugs("coverage", "-w", ws3)
@@ -392,7 +392,7 @@ try:
     bugs("merge", "-w", ws3, "B4", "B1")
     b4 = json.loads((ws3 / "bugs.json").read_text())["bugs"][3]
     check("merge: a working reproduction carries over to the bug that's kept",
-          b4["status"] == "proven" and b4.get("repro_dir") == "scratch/find-failures", b4)
+          b4["status"] == "proven" and b4.get("repro_dir") == "repros/B1", b4)
     procs = [subprocess.Popen([PY, str(BUGS), "update", "-w", str(ws3), "B3", "--note", f"note {i}"], env=ENV,
                               stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL) for i in range(8)]
     for pr in procs:
@@ -489,6 +489,152 @@ try:
     check("close: an argued bug goes on the record as open", any(e["status"] == "open" and e["claim"] == "high, one finder"
                                                                  for e in rec4["entries"]), rec4)
     bugs("clean", "-w", ws4)
+
+    # ---------- blind reproductions, causes, inferred promises, docs out of date, stand-ins, freshness
+    standin = tmp / "standin"
+    standin.mkdir()
+    if os.name == "nt":
+        (standin / "gh.cmd").write_text("@echo stand-in gh refuses %*\r\n@exit /b 3\r\n")
+    else:
+        (standin / "gh").write_text("#!/bin/sh\necho stand-in gh refuses \"$@\"\nexit 3\n")
+        (standin / "gh").chmod(0o755)
+    (proj / "Get-Thing.ps1").write_text("param()\n'one'\n'two'\n")
+    out, _ = bugs("init", "--repo", proj, "--slug", "blind", "--env", "TRAP={sandbox}/projects",
+                  "--path-first", standin)
+    ws5 = run_folder(out)
+    cfg5 = json.loads((ws5 / "config.json").read_text())
+    check("init: records which version of the scripts the run used", len(cfg5.get("script") or "") == 10, cfg5)
+    out, _ = bugs("sandbox", "-w", ws5, "read-one")
+    fb = box_path(out)
+    r, code = runpy(fb, "--", PY, "-c", "import os; print('TRAP=' + os.environ['TRAP'])")
+    check("init --env: {sandbox} is each sandbox's own folder",
+          f"TRAP={fb}/projects".replace("\\", "/") in r.replace("\\", "/"), r)
+    r, code = runpy(fb, "--", "gh", "auth", "status")
+    check("init --path-first: a stand-in answers instead of the real tool", "stand-in gh refuses" in r and code == 1, r)
+    show = lambda name: f"import sys\nprint('EXPECTED: fine')\nprint('OBSERVED: {name} broke')\nsys.exit(1)\n"
+    for name in ("one", "two"):
+        (fb / "repro" / name).mkdir()
+        (fb / "repro" / name / "r.py").write_text(show(name))
+    (fb / "repro" / "one" / "helper.txt").write_text("a helper one needs\n")
+    (fb / "repro" / "loose.py").write_text(show("loose"))
+    (fb / "repro" / "reply.json").write_text(json.dumps({"candidates": [
+        {"title": "one", "claim": "one breaks on save", "cause": "save() writes before it checks",
+         "severity": "high", "command": [PY, "../repro/one/r.py"], "where": ["Get-Thing.ps1:3"]},
+        {"title": "two", "claim": "two breaks", "severity": "medium", "command": [PY, "../repro/two/r.py"],
+         "where": ["P3 inferred from README.md:1"]},
+        {"title": "loose", "claim": "loose breaks", "severity": "medium", "command": [PY, "../repro/loose.py"]},
+    ], "covered": ["calc.py"]}))
+    bugs("collect", "-w", ws5, "--sandbox", "read-one", "--source", "hunter:read-one#1")
+    db5 = json.loads((ws5 / "bugs.json").read_text())["bugs"]
+    rp = ws5 / "repros"
+    check("collect: each reproduction is kept in its own folder, helpers and all, without the others",
+          (rp / "B1" / "one" / "r.py").exists() and (rp / "B1" / "one" / "helper.txt").exists()
+          and not (rp / "B1" / "two").exists() and not (rp / "B1" / "loose.py").exists()
+          and db5[0]["status"] == "proven", sorted(str(x.relative_to(rp)) for x in rp.rglob("*")))
+    check("collect: a loose reproduction file is kept alone, with a note saying so",
+          (rp / "B3" / "loose.py").exists() and any("kept only loose.py" in n for n in db5[2]["notes"]), db5[2])
+    check("collect: the cause is kept apart from the claim, for the lead and the fixer",
+          db5[0].get("cause") == "save() writes before it checks" and "writes" not in db5[0]["claim"], db5[0])
+    check("collect: a suspect resting on an inferred promise is flagged", db5[1].get("inferred") is True, db5[1])
+    out, _ = bugs("sandbox", "-w", ws5, "challenge-B1")
+    cb = box_path(out)
+    out, _ = bugs("repro", "-w", ws5, "B1", "--into", "challenge-B1")
+    check("repro --into: copies only that bug's reproduction, and says how to run it",
+          (cb / "repro" / "one" / "r.py").exists() and not (cb / "repro" / "two").exists()
+          and "../repro/one/r.py" in out, out)
+    bugs("add", "-w", ws5, "--claim", "one breaks too", "--severity", "high", "--source", "lead")
+    bugs("merge", "-w", ws5, "B1", "B4")
+    out, _ = bugs("forward", "-w", ws5)
+    plan5 = json.loads((ws5 / "forward.json").read_text())
+    check("forward: a suspect on an inferred promise waits for the user to confirm it",
+          plan5["unconfirmed"] == ["B2"] and "B2" not in plan5["chosen"] and "promise to confirm" in out, (plan5, out))
+    bugs("update", "-w", ws5, "B2", "--confirm-promise")
+    bugs("forward", "-w", ws5)
+    check("update --confirm-promise: then it goes forward",
+          "B2" in json.loads((ws5 / "forward.json").read_text())["chosen"])
+    (cb / "repro" / "reply.json").write_text(json.dumps({"verdict": "stands", "reason": "it breaks",
+                                                         "severity": "high", "likelihood": "common"}))
+    bugs("update", "-w", ws5, "B1", "--as", "challenger", "--sandbox", "challenge-B1")
+    out, _ = bugs("sandbox", "-w", ws5, "challenge-B3")
+    box_path(out).joinpath("repro", "reply.json").write_text(json.dumps({
+        "verdict": "docs-stale", "reason": "The README describes the old flag; the code changed it on purpose.",
+        "severity": "low", "likelihood": "occasional"}))
+    out, _ = bugs("update", "-w", ws5, "B3", "--as", "challenger", "--sandbox", "challenge-B3")
+    check("update --as challenger: docs-stale means the docs are out of date, not the code",
+          "B3: stale-docs" in out, out)
+    out, _ = bugs("forward", "-w", ws5, "--limit", "3")
+    plan5 = json.loads((ws5 / "forward.json").read_text())
+    check("forward: the limit is for the whole run, so what's been challenged comes out of it",
+          plan5["used"] == 2 and len(plan5["chosen"]) == 1, plan5)
+    bugs("report", "-w", ws5)
+    rep5 = (ws5 / "report.md").read_text(encoding="utf-8")
+    check("report: docs out of date get their own section, for killer-docs",
+          "## Docs out of date" in rep5 and "killer-docs" in rep5 and "describes the old flag" in rep5, rep5)
+    check("report: the lead doesn't count as a separate finder",
+          "**Found by:** 1 finder (read-one, lead)" in rep5, rep5)
+    check("report: run details give the scripts' version", f"version {cfg5['script']}" in rep5, rep5)
+    out, _ = bugs("findings", "-w", ws5)
+    check("findings: a file name with dashes in it is kept whole",
+          any(f["file"] == "Get-Thing.ps1" and f.get("line") == 3 for f in json.loads(out)), out)
+    with open(proj / "calc.py", "a") as f:
+        f.write("# a later change to the code\n")
+    g(proj, "add", "calc.py")
+    g(proj, "commit", "-q", "-m", "touch the code")
+    out, _ = bugs("freshness", "-w", ws5, "--behind", "1")
+    check("freshness: a doc that code commits have passed since it changed is flagged",
+          re.search(r"README\.md\s+\S+\s+1 code commit since", out) and "Behind the code" in out, out)
+    bugs("clean", "-w", ws5)
+
+    # partial only when something the depth meant to settle is left unsettled
+    out, _ = bugs("init", "--repo", proj, "--slug", "partial")
+    ws6 = run_folder(out)
+    out, _ = bugs("sandbox", "-w", ws6, "read-x")
+    xb = box_path(out)
+    (xb / "repro" / "low").mkdir()
+    (xb / "repro" / "low" / "r.py").write_text(show("low"))
+    (xb / "repro" / "reply.json").write_text(json.dumps({"candidates": [
+        {"title": "minor", "claim": "a minor thing", "severity": "low", "command": [PY, "../repro/low/r.py"]}]}))
+    bugs("collect", "-w", ws6, "--sandbox", "read-x", "--source", "hunter:read-x#1")
+    bugs("report", "-w", ws6)
+    check("summary: a standard run with only low bugs unchallenged is done, not partial",
+          json.loads((ws6 / "summary.json").read_text())["status"] == "done", (ws6 / "summary.json").read_text())
+    bugs("update", "-w", ws6, "B1", "--triage", "medium")
+    bugs("report", "-w", ws6)
+    check("summary: a medium bug left unchallenged makes it partial",
+          json.loads((ws6 / "summary.json").read_text())["status"] == "partial")
+
+    # one challenger for a group of bugs
+    out, _ = bugs("sandbox", "-w", ws6, "read-y")
+    yb = box_path(out)
+    for name in ("a", "b"):
+        (yb / "repro" / name).mkdir()
+        (yb / "repro" / name / "r.py").write_text(show(name))
+    (yb / "repro" / "reply.json").write_text(json.dumps({"candidates": [
+        {"title": f"bug {n}", "claim": f"{n} breaks", "severity": "medium", "command": [PY, f"../repro/{n}/r.py"]}
+        for n in ("a", "b")]}))
+    bugs("collect", "-w", ws6, "--sandbox", "read-y", "--source", "hunter:read-y#1")
+    out, _ = bugs("sandbox", "-w", ws6, "challenge-g1")
+    gb = box_path(out)
+    out, _ = bugs("repro", "-w", ws6, "B2", "B3", "--into", "challenge-g1")
+    check("repro --into, several bugs: each one's reproduction, and a command for each",
+          (gb / "repro" / "a" / "r.py").exists() and (gb / "repro" / "b" / "r.py").exists()
+          and "B2:" in out and "B3:" in out, out)
+    out, _ = bugs("repro", "-w", ws6, "B1", "B2", "B2", "--into", "challenge-g1", ok=(2,))
+    check("repro --into: two bugs whose files share a name are refused, not overwritten", "both have" in out, out)
+    (gb / "repro" / "reply.json").write_text(json.dumps({"verdicts": [
+        {"id": "B2", "verdict": "stands", "reason": "real", "severity": "medium", "likelihood": "common"},
+        {"id": "B3", "verdict": "knocked-down", "reason": "documented as intended"}]}))
+    out, _ = bugs("challenges", "-w", ws6, "--sandbox", "challenge-g1")
+    check("challenges: one challenger's verdicts for a group, one per bug",
+          "B2: confirmed (medium/common)" in out and "B3: dismissed" in out and not gb.exists(), out)
+    out, _ = bugs("sandbox", "-w", ws6, "challenge-g2")
+    box_path(out).joinpath("repro", "reply.json").write_text(json.dumps({"verdicts": [
+        {"id": "B1", "verdict": "stands"}, {"id": "B99", "verdict": "stands"}]}))
+    out, _ = bugs("challenges", "-w", ws6, "--sandbox", "challenge-g2", ok=(2,))
+    db6 = json.loads((ws6 / "bugs.json").read_text())["bugs"]
+    check("challenges: an unknown bug in the group changes nothing at all", "no bug B99" in out
+          and not db6[0].get("challenge"), (out, db6[0]))
+    bugs("clean", "-w", ws6)
 
     # ---------- a folder that isn't a git repo
     plain = tmp / "plain"
