@@ -99,7 +99,8 @@ Write this JSON to `reply.json` in the scratch folder:
   "candidates": [
     {"title": "<short name>", "claim": "<what goes wrong, as behaviour someone could observe>",
      "trigger": "<the input or steps>", "expected": "<what the promise says>", "observed": "<what happened>",
-     "where": ["<the promise's id and source>"], "kind": "<bug | mismatch>",
+     "promise": "<the promise's id, like P3>", "where": ["<the doc's file:line the promise comes from; empty for a general rule or --help text>"],
+     "kind": "<bug | mismatch>",
      "source_kind": "<general | usage | tests | docs | changelog | inferred>", "severity": "<high | medium | low>",
      "confidence": "<low | medium | high>", "command": ["<program>", "<argument>"], "runs": "<failed>/<total> or null"}
   ],
@@ -359,6 +360,8 @@ Give it the claim and the prover's "what it would take", never the finder's reas
 ````markdown
 # Find copies of a bug
 
+<What the project is, and how to run it with the run command. Facts only.>
+
 These bugs were proven in this project. The same mistake often appears in more than one place. For each one, find every other place it does.
 
 ## The bugs
@@ -385,7 +388,31 @@ These bugs were proven in this project. The same mistake often appears in more t
 
 ## Your answer
 
-Write `reply.json` in the finder's format, one candidate per copy. Put the path in `where`, and for another project, its folder too. Then end with one line: how many copies, how many reproduced.
+Write this JSON to `reply.json` in the scratch folder, one candidate per copy:
+
+```json
+{
+  "candidates": [
+    {
+      "title": "<short name>",
+      "copy_of": "<the id of the bug it copies>",
+      "claim": "<what goes wrong here, as behaviour someone could observe: what happens, not why>",
+      "trigger": "<the input or steps that make it happen>",
+      "expected": "<what should happen instead>",
+      "observed": "<what you saw when you tried it, or null>",
+      "where": ["<path:line; for another project, its folder too>"],
+      "kind": "bug",
+      "severity": "<high | medium | low: how much it matters here, which can differ from the original>",
+      "confidence": "<low | medium | high>",
+      "command": ["<program>", "<argument>"],
+      "runs": "<failed>/<total>, or null if you ran it once"
+    }
+  ],
+  "covered": ["<path of each file you read>"]
+}
+```
+
+`command` is your reproduction for this copy, or `null` if you have none. Then end with one line: how many copies, how many reproduced.
 ````
 
 ## Fix reviewer

@@ -636,6 +636,31 @@ try:
           and not db6[0].get("challenge"), (out, db6[0]))
     bugs("clean", "-w", ws6)
 
+    # stand-ins: {sandbox} in --path-first, and a sandbox's own stand-ins ahead of the run's
+    ok_stub = tmp / "stub-ok"
+    ok_stub.mkdir()
+    if os.name == "nt":
+        (ok_stub / "gh.cmd").write_text("@echo project stub gh %*\r\n@exit /b 0\r\n")
+    else:
+        (ok_stub / "gh").write_text("#!/bin/sh\necho project stub gh \"$@\"\n")
+        (ok_stub / "gh").chmod(0o755)
+    out, _ = bugs("init", "--repo", proj, "--slug", "stubs", "--path-first", standin, "{sandbox}/own")
+    ws7 = run_folder(out)
+    check("init --path-first: a {sandbox} folder is kept as is, to be filled in per sandbox",
+          "{sandbox}/own" in json.loads((ws7 / "config.json").read_text())["path_first"])
+    out, _ = bugs("sandbox", "-w", ws7, "read-s", "--path-first", ok_stub)
+    sb = box_path(out)
+    r, code = runpy(sb, "--", "gh", "api", "x")
+    check("sandbox --path-first: the sandbox's own stand-in comes before the run's", "project stub gh api x" in r, r)
+    spec = json.loads((sb / "env.json").read_text())
+    check("sandbox: {sandbox} in a PATH folder is that sandbox's own folder",
+          any(p.replace("\\", "/") == f"{sb}/own".replace("\\", "/") for p in spec["path_first"]), spec["path_first"])
+    (sb / "repro" / "reply.json").write_text(json.dumps({"candidates": [], "covered": [str(sb / "repo" / "calc.py")]}))
+    bugs("collect", "-w", ws7, "--sandbox", "read-s", "--source", "hunter:read-s#1")
+    out, _ = bugs("coverage", "-w", ws7)
+    check("coverage: a file named by its path inside the sandbox counts as read", "hunter:read-s#1: 1 in scope" in out, out)
+    bugs("clean", "-w", ws7)
+
     # ---------- a folder that isn't a git repo
     plain = tmp / "plain"
     (plain / "node_modules" / "x").mkdir(parents=True)

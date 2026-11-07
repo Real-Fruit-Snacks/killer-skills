@@ -88,11 +88,16 @@ def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = N
     root = box_path(cfg, name)
     kb = {"KB_SANDBOX": str(root), "KB_REPO": str(root / "repo"), "KB_REPRO": str(root / SCRATCH)}
     root = kit.make_sandbox(cfg, ws, name, include, rev, network, {**kb, **(env or {})}, base=False, scratch=SCRATCH,
-                            path_first=[str(Path(d).resolve()) for d in path_first or ()])
+                            path_first=[full_path(d) for d in path_first or ()])
     if not name.startswith(NOT_AGENTS):   # one sandbox per agent, so this counts the agents
         stamp = dt.datetime.now().isoformat(timespec="seconds")
         mutate_cfg(ws, lambda c: c.setdefault("agents", []).append({"name": name, "at": stamp}))
     return root
+
+
+def full_path(d: str) -> str:
+    """An absolute path, unless it names each sandbox's own folder ({sandbox}), which is filled in later."""
+    return str(d) if "{sandbox}" in str(d) else str(Path(d).resolve())
 
 
 def script_version() -> str:
@@ -263,7 +268,7 @@ def cmd_init(a) -> None:
         "exclude": a.exclude or [],
         "env": parse_env(a.env),
         "depth": a.depth,
-        "path_first": [str(Path(d).resolve()) for d in a.path_first or []],
+        "path_first": [full_path(d) for d in a.path_first or []],
         "script": script_version(),
         "sandboxes_home": str(sandboxes_home()),
         "sandboxes": {},
@@ -372,7 +377,7 @@ def normalize(path: str, top: str) -> str:
             break
     s = s.replace("\\", "/")
     s = re.sub(r"(:\d+(-\d+)?)+$", "", s)
-    m = re.search(r"/kb/[^/]+/[^/]+/repo/(.+)$", s)
+    m = re.search(r"/[0-9a-f]{6}/[^/]+/repo/(.+)$", s)   # <sandboxes home>/<run id>/<sandbox>/repo/...
     if m:
         s = m.group(1)
     else:
@@ -1281,7 +1286,8 @@ def main(argv=None) -> None:
     s.add_argument("--depth", choices=list(DEPTHS), default="standard",
                    help="how much gets proven: quick (high, 5), standard (high and medium, 15), thorough (all, 30)")
     s.add_argument("--workspace", "-w", help="use this run folder instead of the default")
-    s.add_argument("--force", action="store_true", help="start over in an existing run folder")
+    s.add_argument("--force", action="store_true", help="with --workspace, start over in that run folder "
+                   "(without it, init always makes a new folder)")
 
     s = cmd("sandbox", cmd_sandbox, "Make an isolated copy of the project for one agent.")
     s.add_argument("name", help="a name for it, like find-failures or prove-B3")

@@ -32,7 +32,7 @@ Skip anything the user already said ("hunt bugs in this branch, just report"). A
 | Scope | What should I check for bugs? | **Whole project (Recommended)** · **This branch's changes** against main (recommend it instead when the branch is ahead) · **Uncommitted changes** · **One folder**: type it under Other |
 | Kinds (multiSelect) | Which kinds of bug should the hunt look for? The read-through checks every one you pick as it reads, so more kinds don't mean more agents. | The first four kinds from `references/finders.md`, the ones that fit this project marked "(Recommended)" |
 | More kinds (multiSelect) | And these? | The other four, marked the same way |
-| Depth | How deep? | **Standard (Recommended)**: the worst 15 high- and medium-severity suspects proven and challenged; about 10 to 25 agents · **Quick**: the worst 5 high-severity ones; about 5 to 10 agents · **Thorough**: also one agent per chosen kind and a second read-through per slice, and up to 30 suspects of any severity; about 30 to 60 agents |
+| Depth | How deep? | **Standard (Recommended)**: the worst 15 high- and medium-severity suspects proven and challenged; about 10 to 25 agents, an hour or more · **Quick**: the worst 5 high-severity ones; about 5 to 10 agents and 30 to 45 minutes · **Thorough**: also one agent per chosen kind and a second read-through per slice, and up to 30 suspects of any severity; about 30 to 60 agents, several hours |
 
 **Call 2**
 
@@ -65,7 +65,7 @@ If the user wants a seat, ask for their suspicions or promises in chat after the
 
    Also look for anything that reaches the network, and for tools that act on the user's accounts (`gh`, `az`, `aws`, `git push`). For each one, use the project's own test hook (a URL override, a dry-run flag, an environment variable its tests use) and put it in the facts block. Three things help where there's none:
    - **A trap folder per sandbox:** `init --env RFS_PROJECTS={sandbox}/projects` points a setting at a folder inside each sandbox (`{sandbox}` is that sandbox's own folder), so every agent gets its own and none reaches the real one.
-   - **A stand-in ahead on PATH:** put a `gh` (or `gh.cmd`) that prints a refusal and exits non-zero in a folder, and pass it with `init --path-first <folder>`. Every sandbox finds it before the real tool.
+   - **A stand-in ahead on PATH:** put a `gh` (or `gh.cmd`) that prints a refusal and exits non-zero in a folder, and pass it with `init --path-first <folder>`. Every sandbox finds it before the real tool. A stand-in hides every command of the same name further along PATH, the project's own test stub included (PowerShell takes the first folder with `gh` in any form). A sandbox's own `sandbox --path-first` folders come before the run's, so give the project's stub to the sandboxes that need it that way.
    - **Input for interactive commands:** `run.py --stdin <file>` feeds a command its answers, so nobody has to override `Read-Host` by hand.
 
    In every sandbox block, list the commands agents must not run, with the reason.
@@ -150,7 +150,7 @@ A suspect from the promise checker is a disagreement between the docs and the co
 
 Send **one** copy finder for the run, after the challenges: brief it with every confirmed high- or medium-severity bug, each with the mistake behind it in a sentence or two and its reproduction (`bugs.py repro ... --into copy-1`). Collect it with `--source copy-of:<bugs>`; its adapted reproductions are rerun like any finder's. Then run `forward` again: copies compete for what's left of the depth's limit, like any suspect.
 
-A copy that reproduces, in the same kind of code as the bug it copies, is the same mistake, so it doesn't need a challenger of its own. Mark it `update Bn --status confirmed --severity <the copy finder's rating> --note "copy of B3"`. Use the copy finder's rating rather than the original's: the same mistake can matter less elsewhere. A copy somewhere the behaviour might be intended goes to a challenger. Copies in other projects the user named stay suspected, with their paths: they get proven in a run on that project. Don't look for copies of low-severity bugs.
+A copy that reproduces, in the same kind of code as the bug it copies, is the same mistake, so it doesn't need a challenger of its own. Mark it `update Bn --status confirmed --severity <the copy finder's rating> --note "copy of B3"`. Use the copy finder's rating rather than the original's: the same mistake can matter less elsewhere. A copy somewhere the behaviour might be intended goes to a challenger. A copy rated below the depth's severities (a low one on a standard run) is listed with the other unchallenged bugs, not confirmed. Copies in other projects the user named stay suspected, with their paths: they get proven in a run on that project. Don't look for copies of low-severity bugs.
 
 ## 8. Report
 

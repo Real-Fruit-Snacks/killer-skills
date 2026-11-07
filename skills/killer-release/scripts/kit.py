@@ -625,7 +625,7 @@ def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = N
         for d in (scratch, "logs"):
             (root / d).mkdir(exist_ok=True)
         extra = {**cfg.get("env", {}), **(env or {})}
-        first = [*cfg.get("path_first", []), *path_first]
+        first = [*path_first, *cfg.get("path_first", [])]   # this sandbox's own stand-ins win over the run's
         save_json(root / "env.json", sandbox_env(root, cfg["network"] if network is None else network, extra, scratch,
                                                  first))
         shutil.copy2(HERE / "run.py", root / "run.py")
