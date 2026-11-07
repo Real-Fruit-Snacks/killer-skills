@@ -111,21 +111,26 @@ async function add(pack, site, names, o) {
   if (!site || !names.length) die('usage: node fonts.mjs add <site> "Family" ["Family" ...]');
   if (!existsSync(site)) die(`no folder ${site}`);
   const outDir = path.join(site, o.dir);
-  await fs.mkdir(outDir, { recursive: true });
   const cssPath = path.join(outDir, 'fonts.css');
   const blocks = existsSync(cssPath) ? splitCss(await fs.readFile(cssPath, 'utf8')) : new Map();
   const subsets = o.subsets || pack.subsets;
   let preload = null;
 
-  for (const name of names) {
+  // Check every family before copying any, so a bad name or weight leaves the site as it was.
+  const picked = names.map((name) => {
     const f = find(pack, name);
     let files = f.files.filter((x) => subsets.includes(x.subset) && (o.italic || x.style !== 'italic'));
     if (o.weights && !f.axes) {
       const missing = o.weights.filter((w) => !f.weights.includes(w));
-      if (missing.length) die(`${f.family} has no weight ${missing.join(', ')}; it has ${f.weights.join(' ')}`);
+      if (missing.length) die(`${f.family} has no weight ${missing.join(', ')}; it has ${f.weights.join(' ')}. Nothing was changed.`);
       files = files.filter((x) => o.weights.includes(x.weight));
     }
-    if (!files.length) die(`${f.family}: no files match those subsets, weights and styles`);
+    if (!files.length) die(`${f.family}: no files match those subsets, weights and styles. Nothing was changed.`);
+    return { f, files };
+  });
+
+  await fs.mkdir(outDir, { recursive: true });
+  for (const { f, files } of picked) {
     const dest = path.join(outDir, f.id);
     await fs.rm(dest, { recursive: true, force: true });
     await fs.mkdir(dest, { recursive: true });

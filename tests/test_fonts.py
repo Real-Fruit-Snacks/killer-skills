@@ -100,10 +100,21 @@ try:
           and css.count('font-family: "Alpha Serif"') == 4 and beta == ["LICENSE", "beta-sans-latin-400-normal.woff2", "beta-sans-latin-700-normal.woff2"], (beta, css))
     check("an unasked-for weight says to use --weights", "--weights copies only" in out, out)
 
-    r, out = fonts("add", site, "Beta Sans", "--weights", "500")
+    def tree(root):
+        return {str(p.relative_to(root)): p.read_bytes() for p in sorted(root.rglob("*")) if p.is_file()}
+
+    before = tree(site)
+    # Each run would copy a different file set for the family named first, so a partial add shows.
+    r, out = fonts("add", site, "Alpha Serif", "Beta Sans", "--weights", "500", "--no-italic")
     check("refuses a weight the family doesn't have", r.returncode != 0 and "has no weight 500" in out and "400 700" in out, out)
-    r, out = fonts("add", site, "Alpha")
+    check("a refused add changes nothing, even for the families before it", tree(site) == before, sorted(set(tree(site)) ^ set(before)))
+    r, out = fonts("add", site, "Beta Sans", "Alpha")
     check("an unknown family fails and suggests close ones", r.returncode != 0 and 'no family called "Alpha"' in out and "Alpha Serif" in out, out)
+    check("an unknown family changes nothing", tree(site) == before, sorted(set(tree(site)) ^ set(before)))
+    fresh = tmp / "fresh"
+    fresh.mkdir()
+    r, out = fonts("add", fresh, "Alpha Serif", "Beta Sans", "--weights", "500")
+    check("a refused add on a new site leaves no assets folder", r.returncode != 0 and not any(fresh.iterdir()), [p.name for p in fresh.iterdir()])
 
     r, out = fonts("list", e=dict(env, KILLER_SKILLS_CACHE=str(tmp / "empty")))
     check("a missing pack says how to get it", r.returncode != 0 and "isn't installed" in out and "installer" in out and "Google Fonts" in out, out)
