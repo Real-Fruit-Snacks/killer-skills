@@ -530,7 +530,7 @@ try:
     check("publish-plan: the exact commands, in order, tailored to this project",
           plan.index("git merge --ff-only killer-release/v0.2.0") < plan.index("git tag -a v0.2.0")
           < plan.index("git push origin refs/tags/v0.2.0") < plan.index("twine upload") < plan.index("gh release create v0.2.0")
-          and str(ws / "artifacts") in plan and "--notes-file" in plan and "Gate:** PASS" in plan, plan)
+          and any(str(p) in plan for p in (ws / "artifacts", (ws / "artifacts").resolve())) and "--notes-file" in plan and "Gate:** PASS" in plan, plan)
     check("publish-plan: nothing ran: no tag, no push, no tool started, HEAD where it was",
           refs(proj) == before_local and refs(bare) == before_remote and not any(m.exists() for m in markers)
           and g(proj, "rev-parse", "HEAD").strip() == head_before and "v0.2.0" not in g(proj, "tag")

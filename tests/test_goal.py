@@ -355,7 +355,7 @@ try:
     out, _ = goal("next", "-w", ws)
     check("next: a skill step comes with the skill, its answers and the exact unattended text",
           out.startswith("NEXT S2") and "killer-tests (installed" in out
-          and f"Running unattended for killer-goal (run {ws.as_posix()})" in out
+          and any(f"Running unattended for killer-goal (run {w.as_posix()})" in out for w in (ws, ws.resolve()))
           and f"Work on the current branch, {branch}, which killer-goal made for this run" in out
           and "Scope: this branch's changes" in out and "never push, publish, tag" in out, out)
     out, _ = goal("step", "start", "-w", ws, "S2")
@@ -669,7 +669,7 @@ try:
     check("hook install: twice is the same as once",
           "already installed" in out and data2 == data and len(list(settings.parent.glob("settings.json.bak-*"))) == 1, out)
     out, code = goal("hook", "status", "--settings", settings)
-    check("hook status: says it's installed, and where", code == 0 and str(settings) in out and "installed" in out, out)
+    check("hook status: says it's installed, and where", code == 0 and any(str(p) in out for p in (settings, settings.resolve())) and "installed" in out, out)
     out, _ = goal("hook", "remove", "--settings", settings)
     data3 = json.loads(settings.read_text())
     check("hook remove: takes out only its own entry",
@@ -692,7 +692,7 @@ try:
           local.is_file() and ".claude" not in g(proj2, "status", "--porcelain"), (out, g(proj2, "status", "--porcelain")))
     out, code = goal("hook", "status", "--repo", proj2)
     check("hook status: looks in the user's settings (under CLAUDE_CONFIG_DIR) and the project's",
-          str(tmp / "claude" / "settings.json") in out and str(local) in out and code == 0, out)
+          all(any(str(p) in out for p in (q, q.resolve())) for q in (tmp / "claude" / "settings.json", local)) and code == 0, out)
     goal("hook", "remove", "--project", "--repo", proj2)
 
     # ---------- the real ~/.claude was never touched

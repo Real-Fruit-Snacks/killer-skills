@@ -591,7 +591,7 @@ try:
     check("summary.json: the fields killer-goal reads", summary["skill"] == "killer-docs"
           and summary["status"] in ("done", "partial", "blocked") and summary["branch"] == branch
           and len(summary["commits"]) == 1 and summary["decisions"] and summary["waiting"]
-          and summary["report"] == str(ws / "report.md"), summary)
+          and Path(summary["report"]).resolve() == (ws / "report.md").resolve(), summary)
     nums = summary["numbers"]
     check("summary.json: the numbers come from the run", nums["journeys"] == 1 and nums["journeys_reached_latest_walk"] == 1
           and nums["journeys_reached_first_walk"] == 0 and nums["help_undocumented"] == 1

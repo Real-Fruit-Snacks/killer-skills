@@ -127,7 +127,8 @@ try:
           and summ["decisions"] == ["Kept the shorter intro both seats argued over"]
           and summ["waiting"] == ["Push the README: git push"] and summ["commits"] == [] and summ["branch"] is None, summ)
     check("summary: prints the one line to end with",
-          out.strip().splitlines()[-1] == f"killer-council: partial · {summ['headline']} · {ws / 'report.md'}", out)
+          out.strip().splitlines()[-1] == f"killer-council: partial · {summ['headline']} · {summ['report']}"
+          and Path(summ["report"]) == (ws / "report.md").resolve(), out)   # macOS: /var is /private/var
 
     # ---------- lint
     briefs = ws / "round-5" / "briefs"
