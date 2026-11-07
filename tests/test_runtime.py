@@ -5,7 +5,7 @@ Run: python -I tests/test_runtime.py <killer-skills-runtime-windows-x64.zip>
          [--fonts <killer-skills-fonts.zip>]
 
 With --node, every script runs on the packed Node.js instead of the one on the PATH.
-With --python, killer-council's own tests run on the packed Python. With --fonts, it
+With --python, the tests of every skill whose scripts are Python run on the packed Python. With --fonts, it
 checks every family in the font pack, adds two of them to a page with fonts.mjs and
 screenshots it, and every face must load from the page's own folder.
 
@@ -30,6 +30,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 DESIGN = ROOT / "skills" / "killer-design" / "scripts"
+# The tests of every skill whose scripts are Python, run on the packed Python.
+PYTHON_TESTS = [("killer-council's", "test_council.py"), ("the shared kit's", "test_kit.py"),
+                ("killer-bugs'", "test_bugs.py"), ("killer-tests'", "test_tests.py"), ("killer-docs'", "test_docs.py"),
+                ("killer-perf's", "test_perf.py"), ("killer-release's", "test_release.py"),
+                ("killer-upgrade's", "test_upgrade.py"), ("killer-goal's", "test_goal.py")]
 REPO = ROOT / "skills" / "killer-repo" / "scripts"
 failures = []
 
@@ -153,12 +158,25 @@ code{font:600 1rem "IBM Plex Mono",monospace}</style></head>
         check("the page requests nothing outside its folder", not any(run.get("failedRequests") for run in rep.get("runs", [])),
               [run.get("failedRequests") for run in rep.get("runs", [])])
 
+    # killer-slides: its own tests, browser checks included, on the runtime (and the packed Node.js)
+    slides_env = dict(env)
+    if a.node:
+        slides_env["PATH"] = str(Path(NODE).parent) + os.pathsep + env.get("PATH", "")
+    r = subprocess.run([sys.executable, "-I", str(ROOT / "tests" / "test_slides.py")], env=slides_env,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    check("killer-slides' tests pass on the runtime, browser checks included",
+          r.returncode == 0 and "ALL PASSED" in r.stdout and "SKIP browser checks" not in r.stdout,
+          (r.stdout + r.stderr)[-3000:])
+
     if a.python:
         py = unpack(a.python, "killer-skills-python") / "python.exe"
         v = subprocess.run([str(py), "-I", "-c", "import sys; print(sys.version.split()[0])"], capture_output=True, text=True).stdout.strip()
         check("the Python pack runs, at the pinned version", v == PINS["python"]["version"], v)
-        r = subprocess.run([str(py), "-I", str(ROOT / "tests" / "test_council.py")], capture_output=True, text=True, timeout=600, env=env)
-        check("killer-council's tests pass on the Python pack", r.returncode == 0 and "ALL PASSED" in r.stdout, (r.stdout + r.stderr)[-2000:])
+        for who, test in PYTHON_TESTS:
+            if not (ROOT / "tests" / test).exists():
+                continue
+            r = subprocess.run([str(py), "-I", str(ROOT / "tests" / test)], capture_output=True, text=True, timeout=900, env=env)
+            check(f"{who} tests pass on the Python pack", r.returncode == 0 and "ALL PASSED" in r.stdout, (r.stdout + r.stderr)[-2000:])
 
     check("nothing was installed into the skills' own caches",
           not (caches / "killer-design").exists() and not (caches / "killer-repo").exists(),

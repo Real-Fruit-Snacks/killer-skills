@@ -16,6 +16,16 @@ on:
       - "tools/fonts.json"
       - "tests/test_runtime.py"
       - "tests/test_council.py"
+      - "tests/test_kit.py"
+      - "tests/test_bugs.py"
+      - "tests/test_tests.py"
+      - "tests/test_docs.py"
+      - "tests/test_perf.py"
+      - "tests/test_release.py"
+      - "tests/test_upgrade.py"
+      - "tests/test_goal.py"
+      - "tests/test_slides.py"
+      - "tools/shared/**"
       - ".github/workflows/packs.yml"
   workflow_call:
   workflow_dispatch:

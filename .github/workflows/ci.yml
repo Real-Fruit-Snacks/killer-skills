@@ -41,6 +41,36 @@ jobs:
       - name: killer-council
         run: python -I tests/test_council.py
 
+      - name: Shared copies match their sources
+        run: python -I tools/sync.py --check
+
+      - name: Shared kit
+        run: python -I tests/test_kit.py
+
+      - name: killer-bugs
+        run: python -I tests/test_bugs.py
+
+      - name: killer-tests
+        run: python -I tests/test_tests.py
+
+      - name: killer-docs
+        run: python -I tests/test_docs.py
+
+      - name: killer-perf
+        run: python -I tests/test_perf.py
+
+      - name: killer-release
+        run: python -I tests/test_release.py
+
+      - name: killer-upgrade
+        run: python -I tests/test_upgrade.py
+
+      - name: killer-goal
+        run: python -I tests/test_goal.py
+
+      - name: killer-slides
+        run: python -I tests/test_slides.py
+
       - name: Packager
         run: python -I tests/test_package.py
 

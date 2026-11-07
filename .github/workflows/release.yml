@@ -41,7 +41,17 @@ jobs:
 
       - name: Test
         run: |
+          python -I tools/sync.py --check
           python -I tests/test_council.py
+          python -I tests/test_kit.py
+          python -I tests/test_bugs.py
+          python -I tests/test_tests.py
+          python -I tests/test_docs.py
+          python -I tests/test_perf.py
+          python -I tests/test_release.py
+          python -I tests/test_upgrade.py
+          python -I tests/test_goal.py
+          python -I tests/test_slides.py
           python -I tests/test_package.py
           python -I tests/test_fonts.py
           python -I tests/test_install.py

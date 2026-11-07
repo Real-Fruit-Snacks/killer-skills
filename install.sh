@@ -17,7 +17,7 @@
 # replaced. A skill that's already installed is replaced whole, so files a newer version
 # dropped don't linger.
 #
-# With killer-design or killer-repo it also installs the font pack (the web fonts
+# With killer-design, killer-repo or killer-slides it also installs the font pack (the web fonts
 # killer-design suggests, to self-host) into ~/.cache/killer-skills-fonts, unless the same
 # one is already there. The Windows packs (Playwright with Chromium and Mermaid, Node.js,
 # Python) install with install.ps1.
@@ -160,8 +160,8 @@ browser=no
 council=no
 for name in "$@"; do
   case $name in
-    killer-design | killer-repo) browser=yes ;;
-    killer-council) council=yes ;;
+    killer-design | killer-repo | killer-slides) browser=yes ;;
+    killer-council | killer-bugs | killer-tests | killer-docs | killer-perf | killer-release | killer-upgrade | killer-goal) council=yes ;;
   esac
 done
 if [ "${KILLER_SKILLS_RUNTIME:-}" != skip ]; then
@@ -171,7 +171,7 @@ if [ "${KILLER_SKILLS_RUNTIME:-}" != skip ]; then
   case $(uname -s 2>/dev/null) in
     MINGW* | MSYS* | CYGWIN*)
       if { [ "$browser" = yes ] || [ "$council" = yes ]; } && [ -n "$(want killer-skills-runtime-windows-x64.zip)" ]; then
-        printf 'the Windows packs (Playwright with Chromium and Mermaid, and Node.js or Python if they are missing) install with install.ps1; without them, killer-design and killer-repo download Playwright on first use\n'
+        printf 'the Windows packs (Playwright with Chromium and Mermaid, and Node.js or Python if they are missing) install with install.ps1; without them, killer-design, killer-repo and killer-slides download Playwright on first use\n'
       fi ;;
   esac
 fi
