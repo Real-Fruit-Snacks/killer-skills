@@ -328,6 +328,43 @@ img { max-width: 100%; height: auto; display: block; }
 .ledger .fail td:last-child { color: var(--red); }
 .ledger .pass td:last-child { color: var(--ink); }
 
+/* the rest of the set: a ruled docket, one row a skill, until a real run earns it a plate */
+.set-head {
+  display: grid; grid-template-columns: minmax(0, 7fr) minmax(0, 5fr); gap: var(--space-xs) var(--space-l-2xl); align-items: end;
+  margin-top: var(--space-xl); border-top: 3px solid var(--ink); padding-top: var(--space-m);
+}
+.set-head h3 { font-size: var(--step-2); font-weight: 800; font-stretch: 70%; line-height: 1; }
+.set-head p { margin: 0; font-size: var(--small); color: var(--ink-muted); max-width: 46ch; }
+@media (max-width: 60rem) { .set-head { grid-template-columns: minmax(0, 1fr); } }
+
+.set { list-style: none; margin: var(--space-m) 0 0; padding: 0; border-top: 1px solid var(--ink); }
+.job {
+  display: grid; grid-template-columns: minmax(0, 3fr) minmax(0, 6.5fr) minmax(0, 2.5fr); gap: var(--space-xs) var(--space-l);
+  padding-block: var(--space-m); border-bottom: 1px solid var(--line); align-items: start;
+}
+.job:last-child { border-bottom-color: var(--ink); }
+.job h4 { margin: 0; line-height: .86; }
+.job .pre { display: block; font: 500 var(--tiny) / 1 var(--mono); color: var(--ink-muted); margin-bottom: .4rem; }
+.job .name { display: block; font-size: var(--step-3); font-weight: 800; font-stretch: 62%; letter-spacing: -0.005em; }
+.job dl { display: grid; grid-template-columns: 5.5rem minmax(0, 1fr); gap: .4rem var(--space-s); margin: 0; font-size: var(--small); }
+.job dt { font: 500 var(--tiny) / 1.7 var(--mono); color: var(--ink-muted); }
+.job dd { margin: 0; max-width: 62ch; }
+.job .get { flex-direction: column; align-items: flex-start; }
+.zip {
+  display: inline-flex; align-items: center; min-height: 2.5rem;
+  font: 500 var(--small) / 1 var(--mono); text-decoration-color: var(--ink);
+}
+@media (max-width: 64rem) {
+  .job { grid-template-columns: minmax(0, 1fr) minmax(0, 2.4fr); }
+  .job .get { grid-column: 2; flex-direction: row; align-items: center; gap: var(--space-s); }
+}
+@media (max-width: 40rem) {
+  .job { grid-template-columns: minmax(0, 1fr); }
+  .job .get { grid-column: auto; }
+  .job dl { grid-template-columns: minmax(0, 1fr); gap: .1rem; }
+  .job dd + dt { margin-top: .5rem; }
+}
+
 .sh-one { margin: var(--space-l) 0 0; font-size: var(--small); color: var(--ink-muted); }
 .sh-one code { color: var(--ink); overflow-wrap: anywhere; }
 
@@ -341,6 +378,7 @@ img { max-width: 100%; height: auto; display: block; }
 .notes ul { margin: 0; padding-left: 1.1em; }
 .notes li { margin-bottom: .55em; }
 .notes li::marker { color: var(--red); }
+.notes .more a { display: inline-block; padding-block: .35rem; }
 .vars { margin: 0; display: grid; gap: .15rem; }
 .vars dt { margin-top: .6rem; }
 .vars dd { margin: 0; color: var(--ink-muted); }
