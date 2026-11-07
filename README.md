@@ -127,7 +127,7 @@ The installers read these environment variables:
 | `KILLER_SKILLS_CACHE` | Where the packs go. Default `~/.cache`. The skills' scripts read it too |
 | `KILLER_SKILLS_RUNTIME` | `skip`: the skills only, no packs. `all`: every pack the skills use, even when Node.js, Python or killer-design's Playwright is already there, as when setting up a machine that will be offline |
 
-Each skill that keeps runs keeps them in `~/.claude/killer-<name>` and its sandboxes in the temp folder; `KILLER_<NAME>_HOME` and `KILLER_<NAME>_SANDBOXES` move them, as in `KILLER_BUGS_HOME`. killer-council has no sandboxes, and its runs go in `~/.claude/council-runs` unless you name another folder when you start one.
+Each skill keeps its runs in `~/.claude/killer-<name>` and its sandboxes, if it has any, in the temp folder; `KILLER_<NAME>_HOME` and `KILLER_<NAME>_SANDBOXES` move them, as in `KILLER_BUGS_HOME`. killer-council has no sandboxes, and its runs go in `~/.claude/council-runs` unless you name another folder when you start one.
 
 In PowerShell, set one with `$env:KILLER_SKILLS_VERSION = 'v1.0.0'` before the install line. In sh, put it before `sh`: `... | KILLER_SKILLS_VERSION=v1.0.0 sh`.
 
@@ -147,6 +147,7 @@ python3 -I tests/test_goal.py
 python3 -I tests/test_slides.py
 python3 -I tests/test_package.py
 python3 -I tests/test_fonts.py
+python3 -I tests/test_handoff.py
 python3 -I tests/test_install.py
 python3 tools/package.py
 ```
@@ -161,7 +162,7 @@ python -I tools/packs.py fonts --out dist
 python -I tests/test_runtime.py dist/killer-skills-runtime-windows-x64.zip --node dist/killer-skills-node-windows-x64.zip --python dist/killer-skills-python-windows-x64.zip --fonts dist/killer-skills-fonts.zip
 ```
 
-Scripts that two skills share have one source each: `tools/shared/kit.py` and `run.py` (the sandboxes) and killer-design's `fonts.mjs`. Edit the source, then run `python3 tools/sync.py` to copy it into each skill; CI fails when a copy drifts.
+Scripts that two skills share have one source each: `tools/shared/kit.py` and `run.py` (the Python skills' sandboxes), `tools/shared/handoff.mjs` (killer-design's and killer-repo's books) and killer-design's `fonts.mjs`. Edit the source, then run `python3 tools/sync.py` to copy it into each skill; CI fails when a copy drifts.
 
 `python3 tools/packs.py pin` moves the pins to the newest Node.js 24, Python 3.14 and Fontsource releases; add a font family to `tools/fonts.json` first to pack it too.
 

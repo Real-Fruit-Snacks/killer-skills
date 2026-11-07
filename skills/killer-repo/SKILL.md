@@ -23,6 +23,7 @@ The scripts in `scripts/` need Node 20 or newer; if `node` isn't on the PATH, ru
 - `render.mjs [repo | README]`: the README through GitHub's own Markdown renderer, screenshotted in light and dark at desktop and phone widths. `--url` screenshots a live GitHub page instead. When GitHub can't be reached it makes an approximate render instead (`--offline` asks for one): close, not exact, labelled on every screenshot. Treat an approximate render as a draft check, say so in the handoff, and render with GitHub before calling the README done.
 - `card.mjs <file.html>`: any HTML to an image, such as the 1280×640 social card or a designed still for the README.
 - `frames.mjs <frame> <frame> ... --out demo.svg`: a few real still frames, from any source, into one animated SVG that GitHub plays in a README, with no ffmpeg needed.
+- `handoff.mjs start | decide | wait | finish`: the books of an unattended run, ending in `summary.json` (see "Running unattended").
 
 They're for looking and checking. What the README says and shows is decided in steps 3 to 5.
 
@@ -153,10 +154,11 @@ If the user chose the council, run killer-council on the README with seats that 
 
 killer-goal runs this skill overnight, and a user may start it and walk away. Then:
 
+- **Start the books first:** `node <skill-dir>/scripts/handoff.mjs start --project <repo> --target "<one line>"`. It prints the run folder.
 - **The setup answers come with the request.** Don't ask: use what was given and the defaults for the rest, and say so in one line. "Branch and pull request" becomes "commit on the branch killer-goal named", with no pull request.
-- **Calls only the user could make** (a claim you couldn't verify, a tagline you were unsure of) go in the handoff under "Decisions to check".
-- **Nothing public happens unattended:** no `gh repo edit`, topics, website, social card upload, release edit or push. Write each one down with its exact command under "Waiting for your OK".
-- **End with one line:** `killer-repo: <done | partial> · <what changed> · <path to the handoff or the screenshots>`.
+- **Calls only the user could make** (a claim you couldn't verify, a tagline you were unsure of): record each with `handoff.mjs decide -w <run> "<text>"`, and list it in the handoff under "Decisions to check".
+- **Nothing public happens unattended:** no `gh repo edit`, topics, website, social card upload, release edit or push. Record each with `handoff.mjs wait -w <run> "<text>" --command "<cmd>"`, and list it under "Waiting for your OK".
+- **Finish:** write the handoff to `<run>/report.md`, run `audit.mjs --json <run>/audit.json` one last time, then `handoff.mjs finish -w <run> --headline "<what changed>" --checks <run>/audit.json`. It writes `summary.json` for killer-goal, with the commits made since `start`, and prints the line to end with: `killer-repo: <done | partial> · <headline> · <path to the handoff>`. A FAIL left in the audit makes it partial.
 
 ## What makes a repo look AI-made
 

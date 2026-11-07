@@ -54,6 +54,7 @@ jobs:
           python -I tests/test_slides.py
           python -I tests/test_package.py
           python -I tests/test_fonts.py
+          python -I tests/test_handoff.py
           python -I tests/test_install.py
 
       - name: Pack

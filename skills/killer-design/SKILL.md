@@ -199,10 +199,11 @@ Run through the polish checklist at the end of `references/review.md`, then shoo
 
 killer-goal runs this skill overnight, and a user may start it and walk away. Then:
 
-- **Don't stop to ask.** Make the reasonable call, as step 1 says, and list every assumption and stand-in in the handoff under "Decisions to check".
+- **Start the books first:** `node <skill-dir>/scripts/handoff.mjs start --project <site folder> --target "<one line>"`. It prints the run folder.
+- **Don't stop to ask.** Make the reasonable call, as step 1 says. Record every assumption and stand-in with `handoff.mjs decide -w <run> "<text>"`, and list them in the handoff under "Decisions to check".
 - **When killer-goal names a branch, commit the site there,** in the project's own commit style.
-- **Nothing outward-facing happens unattended:** no deploys, no pushes, no DNS or hosting changes. Write each one down with its exact command under "Waiting for your OK".
-- **End with one line:** `killer-design: <done | partial> · <what was built, and where> · <path to the final screenshots>`.
+- **Nothing outward-facing happens unattended:** no deploys, no pushes, no DNS or hosting changes. Record each with `handoff.mjs wait -w <run> "<text>" --command "<cmd>"`, and list it under "Waiting for your OK".
+- **Finish:** write the handoff to `<run>/report.md`, then `handoff.mjs finish -w <run> --headline "<what was built, and where>" --checks <the final shoot.mjs folder>`. It writes `summary.json` for killer-goal, with the commits made since `start` and the final screenshots' FAIL and WARN counts, and prints the line to end with: `killer-design: <done | partial> · <headline> · <path to the handoff>`. A FAIL left in the final shots makes it partial.
 
 ## Working within an existing brand
 

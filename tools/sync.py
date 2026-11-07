@@ -19,6 +19,7 @@ PYTHON_KIT = ["killer-bugs", "killer-tests", "killer-docs", "killer-perf", "kill
 SHARED = {
     "tools/shared/kit.py": PYTHON_KIT,
     "tools/shared/run.py": PYTHON_KIT,
+    "tools/shared/handoff.mjs": ["killer-design", "killer-repo"],
     "skills/killer-design/scripts/fonts.mjs": ["killer-slides"],
 }
 

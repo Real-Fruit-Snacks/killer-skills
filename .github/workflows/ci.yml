@@ -77,5 +77,8 @@ jobs:
       - name: fonts.mjs
         run: python -I tests/test_fonts.py
 
+      - name: handoff.mjs
+        run: python -I tests/test_handoff.py
+
       - name: Installers
         run: python -I tests/test_install.py

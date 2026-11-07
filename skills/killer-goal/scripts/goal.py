@@ -47,7 +47,6 @@ import shlex
 import shutil
 import subprocess
 import sys
-import tempfile
 import time
 from pathlib import Path
 
@@ -79,10 +78,6 @@ UNATTENDED = ("Running unattended for killer-goal (run {run}). Setup answers: {a
               "Record calls the user should check with the skill's decide command (or list them at the end if it "
               "has none), and never push, publish, tag, open a pull request or change anything public. Finish with "
               "the skill's report (or its handoff), and end with its one-line summary.")
-# Skills that write no summary.json: their step is recorded with --headline and --report.
-NO_SUMMARY = ("killer-design", "killer-repo")
-# Skills with no run folder of their own: their screenshots go to these folders in the temp directory.
-SHOTS = {"killer-design": "killer-design-shots", "killer-repo": "killer-repo-shots"}
 
 _kit = None
 
@@ -1423,10 +1418,6 @@ def done_args(s) -> str:
     """What `step done` needs for this step: the skill's summary.json, or a headline and its report."""
     if s.get("kind") != "skill":
         return f'{s["id"]} --headline "<what changed, and the proof>"'
-    if s.get("skill") in SHOTS:
-        return f'{s["id"]} --headline "<its one-line summary>" --report <the handoff or screenshots its last line names>'
-    if s.get("skill") in NO_SUMMARY:
-        return f'{s["id"]} --headline "<its one-line summary>" --report <its report.md>'
     return f'{s["id"]} --summary <its run folder>/summary.json'
 
 
@@ -1467,8 +1458,7 @@ def print_step_block(ws, G, s, head: str) -> None:
         print("     " + UNATTENDED.format(run=Path(ws).as_posix(), answers=answers,
                                          branch=G["branch"], base=G["base"][:10]))
         print(f"  3. When it finishes: {cmdline('step done', ws, done_args(s))}")
-        if s["skill"] not in NO_SUMMARY:
-            print("     No summary.json? Use --headline \"<its one-line summary>\" --report <its report.md> instead.")
+        print("     No summary.json? Use --headline \"<its one-line summary>\" --report <its report.md> instead.")
     else:
         print(f"  2. Do the work on {G['branch']}: a test that fails without the change first, then the change. "
               f"Commit each logical change with a plain message that says what changed and why; no AI attribution, "
@@ -2159,8 +2149,6 @@ def sub_runs(G, s) -> list[Path]:
         roots += [d for d in home.iterdir() if d.is_dir()]
     if s["skill"] == "killer-council":                      # ~/.claude/council-runs/<date>-<slug>/, one for all projects
         roots += list(dict.fromkeys([Path.home() / ".claude" / "council-runs", claude_dir() / "council-runs"]))
-    if s["skill"] in SHOTS:                                 # no run folder: the screenshot folders in the temp directory
-        roots.append(Path(tempfile.gettempdir()) / SHOTS[s["skill"]])
     found = []
     for r in roots:
         if not r.is_dir():
@@ -2242,16 +2230,8 @@ def cmd_status(a) -> int:
             if s.get("answers"):
                 print(f"       setup answers: {s['answers']}")
             for d in sub_runs(G, s):
-                if s["skill"] in SHOTS:
-                    print(f"       its screenshots, probably: {d} (it writes no summary.json: it's done when it "
-                          f"prints its one-line summary)")
-                elif s["skill"] in NO_SUMMARY:
-                    has = (d / "report.md").is_file()
-                    print(f"       its run folder, probably: {d}" + (" (report.md is there: read it to see how far it got)"
-                                                                     if has else " (no report.md yet)"))
-                else:
-                    has = (d / "summary.json").is_file()
-                    print(f"       its run folder, probably: {d}" + (" (summary.json is there: it finished)" if has else " (no summary.json yet)"))
+                has = (d / "summary.json").is_file()
+                print(f"       its run folder, probably: {d}" + (" (summary.json is there: it finished)" if has else " (no summary.json yet)"))
     print(f"Decisions to check: {len(G.get('decisions', [])) + sum(len((s.get('summary') or {}).get('decisions', [])) for s in steps)} · "
           f"Waiting for the user: {len(G.get('waiting', [])) + sum(len((s.get('summary') or {}).get('waiting', [])) for s in steps)} · "
           f"Amendments: {len(G.get('amendments', []))}")

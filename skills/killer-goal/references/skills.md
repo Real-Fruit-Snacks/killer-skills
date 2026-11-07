@@ -21,11 +21,11 @@ Agent counts are rough, for the budget. `step done` takes the count from a summa
 | killer-release | `~/.claude/killer-release/<project>/<date>-<slug>/` | yes | `release.py init --branch` or `bump --apply --branch` |
 | killer-upgrade | `~/.claude/killer-upgrade/<project>/<date>-upgrade/` | yes | `upgrade.py land --branch` |
 | killer-slides | `~/.claude/killer-slides/<deck>/<date>-<slug>/` | yes | `deck.mjs land --branch` (or `init --branch`) |
-| killer-repo | none; screenshots in `<temp>/killer-repo-shots/<label>-<hash>/` | no | in prose |
-| killer-design | none; screenshots in `<temp>/killer-design-shots/<label>-<hash>/` | no | in prose |
+| killer-repo | `~/.claude/killer-repo/<project>/<date>-repo-page/` | yes, from `handoff.mjs finish` | in prose |
+| killer-design | `~/.claude/killer-design/<project>/<date>-site/` | yes, from `handoff.mjs finish` | in prose |
 | killer-council | `~/.claude/council-runs/<date>-<slug>/` | yes, from `council.py summary` | in prose, and only when the answers ask it to commit |
 
-`<project>` is the project folder's name and a short hash. For a skill with a summary.json, record the step with `step done --summary <its run folder>`. killer-repo and killer-design write none: `--headline "<its one-line summary>" --report <the screenshots or handoff its last line names>`. Nothing copies their "Decisions to check" and "Waiting for your OK" into the ledger, so record each one with `goal.py decide` and `goal.py wait`. `goal.py status` looks in these places for a running step's folder.
+`<project>` is the project folder's name and a short hash. Record the step with `step done --summary <its run folder>`. If a run ended without its summary.json, use `--headline "<its one-line summary>" --report <its report.md>`, and record its "Decisions to check" and "Waiting for your OK" yourself with `goal.py decide` and `goal.py wait`, since nothing else copies them into the ledger. `goal.py status` looks in these places for a running step's folder.
 
 ## killer-bugs: proven bugs, fixed if you want
 
@@ -118,7 +118,7 @@ Agent counts are rough, for the budget. `step done` takes the count from a summa
   - Changes: *Branch and pull request*, which unattended means commit on the goal branch, no pull request. Never *Commit to the default branch*.
   - Council: *No, the screenshots are enough*.
 - **Agents:** none of its own.
-- **Leaves:** README, asset and visual-script commits on the goal branch. The description, topics, website and social card upload recorded as waiting with their exact commands. No run folder, report.md or summary.json: `--headline "<what changed>" --report <the handoff or screenshots its last line names>`. Needs Node 20+ and Playwright. The exact render needs GitHub (through `gh` or its API); without it the render is approximate and labelled.
+- **Leaves:** README, asset and visual-script commits on the goal branch. The description, topics, website and social card upload recorded as waiting with their exact commands. Its handoff (`report.md`) and `summary.json` in its run folder, from `handoff.mjs`; a failing `audit.mjs` check makes it partial. Needs Node 20+ and Playwright. The exact render needs GitHub (through `gh` or its API); without it the render is approximate and labelled.
 
 ## killer-design: a website
 
@@ -126,7 +126,7 @@ Agent counts are rough, for the budget. `step done` takes the count from a summa
 - **Wrong tool:** a critique with no changes (design-critique); the repo page (killer-repo).
 - **Setup, unattended:** it has no setup questions. Put the job in the answers: what the site is for, where it goes (`site/` unless the project has a place), and the brand or `DESIGN.md` to follow if there is one. It lists its assumptions and stand-ins as decisions.
 - **Agents:** none.
-- **Leaves:** the site, `DESIGN.md` and the icons, committed on the goal branch. Deploys recorded as waiting. No run folder, report.md or summary.json: `--headline "<what was built, and where>" --report <the screenshots its last line names>`. Needs Node 20+ and Playwright, from the project or the killer-skills runtime; otherwise the first run installs it and needs the network.
+- **Leaves:** the site, `DESIGN.md` and the icons, committed on the goal branch. Deploys recorded as waiting. Its handoff (`report.md`) and `summary.json` in its run folder, from `handoff.mjs`; a failing check in the final `shoot.mjs` report makes it partial. Needs Node 20+ and Playwright, from the project or the killer-skills runtime; otherwise the first run installs it and needs the network.
 
 ## killer-slides: a talk
 
