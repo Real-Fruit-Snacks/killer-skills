@@ -2,7 +2,7 @@
 
 Each release publishes every skill on its own (`<skill>.zip`, `<skill>.tar.gz`), all of them together (`killer-skills.zip`, `killer-skills.tar.gz`), the packs (`killer-skills-fonts.zip` and `.tar.gz`, and for Windows `killer-skills-runtime-windows-x64.zip`, `killer-skills-node-windows-x64.zip` and `killer-skills-python-windows-x64.zip`), both installers and `SHA256SUMS.txt`. The asset names don't change, so `https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/<file>` always fetches the newest.
 
-## 1.3.0 (unreleased)
+## 1.3.0 (2026-11-07)
 
 Eight new skills, for eleven in all, each ending with a check a script runs: a bug hunt that reports only the bugs it can make happen, tests kept only if they catch a planted fault, docs that a blind newcomer has to get through, speedups that have to beat the measured noise, upgrades proven by the project's own tests, releases that have to install from scratch, decks measured slide by slide, and killer-goal, which takes a goal in your words and runs the rest overnight.
 
