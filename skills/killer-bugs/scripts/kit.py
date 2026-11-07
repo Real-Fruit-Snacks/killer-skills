@@ -154,26 +154,41 @@ def locked(ws: Path, timeout: float = 300):
     ws = Path(ws)
     ws.mkdir(parents=True, exist_ok=True)
     lock, start = ws / ".lock", time.monotonic()
+    # On Windows a lock file that's just been deleted stays "delete pending" while another process still
+    # has it open (checking its age, say): creating, checking or deleting it then raises PermissionError.
+    # That's the lock being busy, not an error, so wait it out like a held lock.
+    busy = (FileExistsError, PermissionError) if os.name == "nt" else (FileExistsError,)
     while True:
         try:
             fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
             os.write(fd, str(os.getpid()).encode())
             os.close(fd)
             break
-        except FileExistsError:
+        except busy:
             try:
                 if time.time() - lock.stat().st_mtime > 600:   # left by a crash
                     lock.unlink(missing_ok=True)
                     continue
             except FileNotFoundError:
                 continue
+            except PermissionError:
+                if os.name != "nt":
+                    raise
             if time.monotonic() - start > timeout:
                 fail(f"{lock} is held by another process; delete it if nothing is running")
             time.sleep(0.05)
     try:
         yield
     finally:
-        lock.unlink(missing_ok=True)
+        deadline = time.monotonic() + 15
+        while True:
+            try:
+                lock.unlink(missing_ok=True)
+                break
+            except PermissionError:   # Windows, while another process checks the lock
+                if time.monotonic() > deadline:
+                    raise
+                time.sleep(0.02)
 
 
 def git(cwd: Path, *args: str, check: bool = True, env: dict | None = None, data: str | None = None) -> str:

@@ -277,6 +277,27 @@ try:
     bad = sum(int(o.strip() or 1) for o, _ in outs)
     check("save_json/load_json: six processes at once, no errors", bad == 0, [e[-300:] for _, e in outs if e])
 
+    # ---------- many processes taking the run's lock at once (Windows: a deleted lock file is busy for a moment)
+    lw = tmp / "lock-run"
+    lw.mkdir()
+    locker = tmp / "locker.py"
+    locker.write_text(
+        "import importlib.util, sys\nfrom pathlib import Path\n"
+        "s = importlib.util.spec_from_file_location('k', sys.argv[1]); k = importlib.util.module_from_spec(s); s.loader.exec_module(k)\n"
+        "ws = Path(sys.argv[2])\n"
+        "for i in range(15):\n"
+        "    with k.locked(ws, timeout=120):\n"
+        "        d = k.load_json(ws / 'data.json', [])\n"
+        "        d.append(sys.argv[3] + '-' + str(i))\n"
+        "        k.save_json(ws / 'data.json', d)\n")
+    lockers = [subprocess.Popen([PY, str(locker), str(ROOT / "tools" / "shared" / "kit.py"), str(lw), str(n)],
+                                stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True) for n in range(12)]
+    outs = [p.communicate()[0] for p in lockers]
+    got = kit.load_json(lw / "data.json", [])
+    check("locked: 12 processes taking the lock 15 times each lose nothing and nobody crashes",
+          len(got) == 180 and len(set(got)) == 180 and all(p.returncode == 0 for p in lockers) and not (lw / ".lock").exists(),
+          (len(got), [o.strip().splitlines()[-1] for o in outs if o.strip()][:3]))
+
     # ---------- sync.py
     r = subprocess.run([PY, "-I", str(ROOT / "tools" / "sync.py"), "--check"], capture_output=True, text=True)
     check("sync.py --check: every shared copy matches its source", r.returncode == 0, r.stdout + r.stderr)
