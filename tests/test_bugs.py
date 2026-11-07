@@ -689,6 +689,20 @@ try:
     out, _ = bugs("recheck", "-w", run_folder(out))
     check("recheck: an unreliable reproduction says so instead of claiming the bug is still there",
           "unreliable" in out, out)
+    out, _ = bugs("sandbox", "-w", ws8, "read-r")
+    rb_ = box_path(out)
+    (rb_ / "repro" / "steady").mkdir()
+    (rb_ / "repro" / "steady" / "r.py").write_text(show("steady"))
+    (rb_ / "repro" / "reply.json").write_text(json.dumps({"candidates": [
+        {"title": "steady", "claim": "shows every time", "severity": "low", "runs": "3/3",
+         "command": [PY, "../repro/steady/r.py"]},
+        {"title": "flaky", "claim": "shows sometimes", "severity": "low", "runs": "1/4",
+         "command": [PY, "../repro/steady/r.py"]}]}))
+    bugs("collect", "-w", ws8, "--sandbox", "read-r", "--source", "hunter:read-r#1")
+    db8 = {b["title"]: b for b in json.loads((ws8 / "bugs.json").read_text())["bugs"]}
+    check("collect: a bug that showed every time is rerun once; one that showed sometimes gets its repeats",
+          db8["steady"]["verified"]["runs"] == "1/1" and db8["flaky"]["verified"]["runs"] == "4/4",
+          (db8["steady"].get("verified"), db8["flaky"].get("verified")))
     bugs("decide", "-w", ws8, "first call")
     bugs("decide", "-w", ws8, "a call made on a stale clock")
     out, _ = bugs("decide", "-w", ws8, "--drop", "2")

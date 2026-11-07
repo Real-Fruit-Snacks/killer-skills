@@ -21,6 +21,7 @@ Paste each kind's lens, "Look for" list and probe into the briefs as they are.
 - what the code claims (its names, comments, messages, docs) against what it does
 - anything a caller can reach that loses or overwrites data, leaks a secret, or reports success after failing
 - a protection applied on one path and missing on another that handles the same data: find each redact, escape, validate or sanitize step, then every other place that writes, logs, sends or exports that data, and check it goes through the step too. A rule that one of three exporters applies is the shape of most leaks
+- every form a secret can take, against every place data goes out: list the forms (headers, query parameters, cookies, `user:password@` in a URL, body fields, environment values) and the outputs (screen, logs, archives, exports, reports, error messages), then check each pair. A form that no output handles is missing everywhere, which the check above can't see
 **Probe:** for each suspicion, try it in your copy before reporting it.
 **Recommend it when:** always.
 

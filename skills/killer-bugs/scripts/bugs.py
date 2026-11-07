@@ -190,8 +190,15 @@ def agent_sources(b: dict) -> set[str]:
 # ---------------------------------------------------------------- sandboxes
 
 def runs_total(runs) -> int:
+    """How many times to rerun a reproduction: once if it showed every time, more if it only sometimes did.
+
+    A bug that showed in 3 of 3 runs shows in one; a flaky one (2 of 20) needs the repeats to be seen
+    at all. Reruns cost real time on a project that builds before it runs."""
     m = re.match(r"\s*(\d+)\s*(?:/|of)\s*(\d+)", str(runs or ""))
-    return max(1, min(10, int(m.group(2)))) if m else 1   # enough to catch a flaky one; hangs make more costly
+    if not m:
+        return 1
+    shown, total = int(m.group(1)), int(m.group(2))
+    return 1 if shown >= total else max(1, min(10, total))
 
 
 def verify_repro(ws: Path, cfg: dict, bid: str, repro_dir: str | None, cmd: list[str], repeat: int,
