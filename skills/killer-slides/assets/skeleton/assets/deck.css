@@ -1,0 +1,85 @@
+/* deck.css: the engine's CSS. The 1920x1080 canvas, scaling to the window, builds, the
+   presenter view, the overview and print. Leave it as it is: the look lives in theme.css.
+   Without JavaScript the slides stack one under another, at full size. */
+
+@page { size: 1920px 1080px; margin: 0; }
+
+html, body { margin: 0; padding: 0; }
+
+.slide {
+  position: relative;
+  box-sizing: border-box;
+  width: 1920px;
+  height: 1080px;
+  overflow: hidden;
+  overflow: clip;
+}
+.slide .notes { display: none; }
+
+.deck-js, .deck-js body { height: 100%; overflow: hidden; }
+.deck-js body { background: var(--deck-letterbox, #000); }
+.deck-js .deck { position: fixed; inset: 0; overflow: hidden; }
+.deck-js .slide {
+  position: absolute;
+  left: 0;
+  top: 0;
+  transform-origin: 0 0;
+  transform: translate(var(--x, 0px), var(--y, 0px)) scale(var(--s, 1));
+  visibility: hidden;
+}
+.deck-js .slide.is-current { visibility: visible; }
+
+/* Builds: hidden until their turn, without moving anything else on the slide. */
+.deck-js [data-step]:not(.is-shown) { opacity: 0; visibility: hidden; }
+@media (prefers-reduced-motion: no-preference) {
+  .deck-js [data-step] { transition: opacity var(--build-time, 300ms) ease, visibility var(--build-time, 300ms); }
+}
+
+.deck-blackout .deck { visibility: hidden; }
+.deck-blackout body { background: #000; }
+
+/* The parts the engine adds. */
+.deck-live {
+  position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* Overview: every slide in a grid. */
+.deck-overview .deck { overflow-y: auto; background: #1a1a1a; }
+.deck-overview .slide { visibility: visible; cursor: pointer; }
+.deck-overview .slide * { pointer-events: none; }
+.deck-overview .slide.is-current { outline: 32px solid #f5f5f5; }
+.deck-spacer { position: absolute; left: 0; top: 0; width: 1px; pointer-events: none; }
+
+/* Presenter view: the current slide, the next one, the notes and a timer. */
+.deck-presenter body { background: #161616; }
+.deck-presenter .deck { pointer-events: none; z-index: 1; }
+.deck-presenter .slide.is-next { visibility: visible; }
+.pv {
+  position: fixed; inset: 0; box-sizing: border-box;
+  display: grid; grid-template-columns: 3fr 2fr; grid-template-rows: auto auto minmax(0, 1fr);
+  grid-template-areas: "current next" "current notes" "bar notes"; gap: 24px; padding: 24px;
+  color: #e8e8e8; font: 18px/1.5 system-ui, sans-serif;
+}
+.pv-current, .pv-next { align-self: start; width: 100%; aspect-ratio: 16 / 9; background: #000; }
+.pv-current { grid-area: current; }
+.pv-next { grid-area: next; display: grid; place-items: center; color: #9a9a9a; }
+.pv-notes { grid-area: notes; overflow: auto; line-height: 1.45; padding-right: 8px; }
+.pv-notes > :first-child { margin-top: 0; }
+.pv-bar { grid-area: bar; display: flex; flex-wrap: wrap; align-content: start; gap: 8px 32px; align-items: baseline; font-variant-numeric: tabular-nums; }
+.pv-count { font-size: 22px; }
+.pv-builds { color: #9a9a9a; }
+.pv-timer { flex-basis: 100%; text-align: left; font: inherit; font-size: 64px; line-height: 1.1; color: inherit; background: none; border: 0; padding: 0; cursor: pointer; }
+.pv-timer.is-over { color: #ff8a7a; }
+.pv-clock { font-size: 28px; color: #9a9a9a; }
+
+/* Print and PDF: one slide per page, every build in, no notes. */
+@media print {
+  html, body, .deck-js, .deck-js body { height: auto; overflow: visible; background: none; }
+  .deck-js .deck { position: static; overflow: visible; }
+  .deck-js .slide { position: relative; transform: none; visibility: visible; }
+  .slide + .slide { break-before: page; }
+  .deck-js [data-step] { opacity: 1 !important; visibility: visible !important; transition: none !important; }
+  .deck-ui, .deck-spacer { display: none; }
+  * { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+}

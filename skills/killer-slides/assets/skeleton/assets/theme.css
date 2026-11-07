@@ -1,0 +1,71 @@
+/* theme.css: the look of this deck. Everything in this file is yours to replace.
+
+   The values below are neutral stand-ins so the skeleton renders and passes its checks.
+   They are not a design: invent this deck's own (concept, type, palette, grid, signature)
+   and write it down in this comment before you change the values.
+
+   Size everything in px on the 1920x1080 canvas. The engine scales the whole canvas to the
+   screen, so never use vw, vh or media queries inside a slide: they change the layout on
+   every screen and the checks no longer describe what the room sees. */
+
+:root {
+  /* Colour roles. */
+  --bg: oklch(0.97 0.004 250);
+  --surface: oklch(0.93 0.006 250);
+  --ink: oklch(0.23 0.01 250);
+  --ink-muted: oklch(0.42 0.01 250);
+  --line: oklch(0.84 0.008 250);
+  --accent: oklch(0.48 0.12 250);
+  --deck-letterbox: oklch(0.16 0.005 250);
+
+  /* Type. Add faces with fonts.mjs and name them here. */
+  --font-display: system-ui, sans-serif;
+  --font-text: system-ui, sans-serif;
+  --size-hero: 150px;
+  --size-title: 84px;
+  --size-lead: 48px;
+  --size-body: 38px;
+  --size-small: 30px;
+  --size-caption: 24px;
+
+  /* The safe area and a spacing scale. */
+  --margin-x: 136px;
+  --margin-y: 104px;
+  --space-1: 16px;
+  --space-2: 28px;
+  --space-3: 44px;
+  --space-4: 72px;
+  --space-5: 112px;
+}
+
+.slide {
+  padding: var(--margin-y) var(--margin-x);
+  background: var(--bg);
+  color: var(--ink);
+  font: 400 var(--size-body) / 1.35 var(--font-text);
+  display: grid;
+  align-content: center;
+  gap: var(--space-3);
+}
+
+.slide h1, .slide h2 {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.04;
+  letter-spacing: -0.015em;
+  text-wrap: balance;
+}
+.slide h1 { font-size: var(--size-hero); }
+.slide h2 { font-size: var(--size-title); max-width: 22ch; }
+.slide p { margin: 0; max-width: 40ch; text-wrap: pretty; }
+.slide .lead { font-size: var(--size-lead); color: var(--ink-muted); }
+.slide .byline { font-size: var(--size-small); color: var(--ink-muted); }
+
+.slide .points { margin: 0; padding: 0; list-style: none; display: grid; gap: var(--space-2); }
+.slide .points li { padding-left: var(--space-3); border-left: 6px solid var(--accent); }
+
+/* A stand-in for something only the speaker knows: a name, a date, a number. */
+.todo { background: oklch(0.93 0.1 95); color: oklch(0.27 0.06 80); padding: 0 0.2em; }
+
+::selection { background: var(--accent); color: var(--bg); }

@@ -1,0 +1,45 @@
+<!doctype html>
+<html lang="{{lang}}">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>{{title}}</title>
+<script>document.documentElement.classList.add('deck-js')</script>
+<link rel="stylesheet" href="assets/deck.css">
+<!-- Fonts: after fonts.mjs add, link the stylesheet it writes here, before theme.css, without a preload. -->
+<link rel="stylesheet" href="assets/theme.css">
+<script src="assets/deck.js" defer></script>
+</head>
+<body>
+<main class="deck"{{minutes}} aria-label="{{title}}">
+
+<section class="slide" data-title="Opening">
+  <h1>{{title}}</h1>
+  <p class="byline"><span class="todo">[Speaker, event and date]</span></p>
+  <aside class="notes">
+    <p>The opening line, word for word: who you are in one sentence, and why this matters to the people in this room.</p>
+  </aside>
+</section>
+
+<section class="slide" data-title="One claim">
+  <h2>Each slide's title is its claim, written as a sentence</h2>
+  <ul class="points">
+    <li data-step>A build shows the next point when you press the right arrow</li>
+    <li data-step>Use builds when the order of the points is the story</li>
+  </ul>
+  <aside class="notes">
+    <p>What you say on this slide, as you'd say it. End with the sentence that carries you into the next slide.</p>
+  </aside>
+</section>
+
+<section class="slide" data-title="Close">
+  <h2>End on what you want people to do next</h2>
+  <p class="lead"><span class="todo">[The call to action: a link, a date, a decision]</span></p>
+  <aside class="notes">
+    <p>Say the call to action, then stop. Questions come after it, not instead of it.</p>
+  </aside>
+</section>
+
+</main>
+</body>
+</html>
