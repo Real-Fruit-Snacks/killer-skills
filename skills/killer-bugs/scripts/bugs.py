@@ -26,32 +26,75 @@ and update read it from there with --sandbox, and delete the sandbox afterwards.
 
 Runs live in ~/.claude/killer-bugs/<project>/<date>-<slug>/, outside the project,
 so an agent working in the project can't come across them. Sandboxes live in the
-temp folder. KILLER_BUGS_HOME and KILLER_BUGS_SANDBOXES move them.
+temp folder. KILLER_BUGS_HOME and KILLER_BUGS_SANDBOXES move them. The sandboxes, run.py
+and the run's files come from the shared kit (kit.py, beside this file); bugs.py asks for
+sandboxes that keep the project's own git state, since it never diffs one.
 Standard library only. Run `bugs.py <command> --help` for options.
 """
 from __future__ import annotations
 
 import argparse
-import contextlib
 import datetime as dt
 import fnmatch
-import hashlib
 import importlib.util
 import json
-import os
 import re
 import secrets
-import shlex
 import shutil
-import site
-import stat
-import subprocess
 import sys
-import tempfile
-import time
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
+
+# The shared kit (tools/shared/kit.py, copied here by tools/sync.py): run folders, scope, sandboxes,
+# run.py and the run's locked JSON files. Loaded by path: python -I leaves this folder off sys.path.
+_spec = importlib.util.spec_from_file_location("killer_kit", HERE / "kit.py")
+kit = importlib.util.module_from_spec(_spec)
+_spec.loader.exec_module(kit)
+
+SKILL = "bugs"
+SCRATCH = "repro"   # reproductions reach it as ../repro/<file>, and the record keeps those commands
+(SKIP_DIRS, SECRET_NAMES, DROP_NAMES, DEAD_PROXY, LOOPBACK, OFFLINE_NOTE, TEXT_LIMIT, REPLY) = (
+    kit.SKIP_DIRS, kit.SECRET_NAMES, kit.DROP_NAMES, kit.DEAD_PROXY, kit.LOOPBACK, kit.OFFLINE_NOTE,
+    kit.TEXT_LIMIT, kit.REPLY)
+runner, fail, today, replace, locked, git, git_ok, split0, rmtree = (
+    kit.runner, kit.fail, kit.today, kit.replace, kit.locked, kit.git, kit.git_ok, kit.split0, kit.rmtree)
+load_json, save_json, read_reply, as_list, as_cmd, parse_env = (
+    kit.load_json, kit.save_json, kit.read_reply, kit.as_list, kit.as_cmd, kit.parse_env)
+find_top, has_head, project_key, all_files, changed_since, default_base, is_text, excluded, resolve_scope = (
+    kit.find_top, kit.has_head, kit.project_key, kit.all_files, kit.changed_since, kit.default_base,
+    kit.is_text, kit.excluded, kit.resolve_scope)
+copy_path, run_command_line, classify, box_path, drop_sandbox = (
+    kit.copy_path, kit.run_command_line, kit.classify, kit.box_path, kit.drop_sandbox)
+mutate_cfg = kit.update_cfg
+
+
+def runs_home() -> Path:
+    return kit.runs_home(SKILL)
+
+
+def sandboxes_home() -> Path:
+    return kit.sandboxes_home(SKILL)
+
+
+def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = None,
+                 network: bool | None = None, env: dict | None = None) -> Path:
+    """The kit's sandbox, keeping the project's own git state: HEAD, branch and what's staged as they
+    are in the project and no base commit, since bugs.py never diffs a sandbox."""
+    root = box_path(cfg, name)
+    kb = {"KB_SANDBOX": str(root), "KB_REPO": str(root / "repo"), "KB_REPRO": str(root / SCRATCH)}
+    root = kit.make_sandbox(cfg, ws, name, include, rev, network, {**kb, **(env or {})}, base=False, scratch=SCRATCH)
+    if not name.startswith(NOT_AGENTS):   # one sandbox per agent, so this counts the agents
+        stamp = dt.datetime.now().isoformat(timespec="seconds")
+        mutate_cfg(ws, lambda c: c.setdefault("agents", []).append({"name": name, "at": stamp}))
+    return root
+
+
+def keep_scratch(box: Path, dst: Path) -> None:
+    """Copy an agent's scratch folder (its reproductions) into the run, without its reply."""
+    kit.keep_scratch(box, dst, SCRATCH)
+
+
 STATUSES = ("candidate", "proven", "suspected", "confirmed", "argued", "question", "dismissed",
             "intended", "fixed", "merged", "known")
 SEVERITY = ("high", "medium", "low")
@@ -68,139 +111,9 @@ ROLES = {"promises": "promise checker", "read": "read-through", "find": "finder"
          "prove": "prover", "challenge": "challenger", "code": "code checker", "copy": "copy finder",
          "review": "fix reviewer", "final": "final pass"}
 NOT_AGENTS = ("verify-", "check-", "recheck-", "map", "old-")   # the script's own and the lead's
-SKIP_DIRS = {".git", "node_modules", ".venv", "venv", "__pycache__", ".tox", ".mypy_cache",
-             ".pytest_cache", "dist", "build", "target", ".next", ".cache"}
-SECRET_NAMES = r"TOKEN|SECRET|PASSW(OR)?D|API_?KEY|ACCESS_?KEY|PRIVATE_?KEY|CREDENTIAL|SESSION_?KEY"
-DROP_NAMES = ["SSH_AUTH_SOCK", "SSH_AGENT_PID", "GIT_ASKPASS", "SSH_ASKPASS", "GIT_SSH_COMMAND",
-              # the host's import paths, so code in a sandbox can't import the real project's copy
-              "PYTHONPATH", "PYTHONHOME", "VIRTUAL_ENV", "NODE_PATH"]
-DEAD_PROXY = "http://127.0.0.1:9"
-LOOPBACK = "localhost,127.0.0.1,::1"
-OFFLINE_NOTE = ("off, through a dead proxy (this machine's own addresses still work): Python, Node.js, "
-                "git, curl, npm and pip honour it; Windows PowerShell 5.1 and raw sockets don't")
-TEXT_LIMIT = 1_000_000
-REPLY = "reply.json"
-
-_runner = None
-
-
-def runner():
-    """run.py, loaded by path (python -I leaves the script's folder off sys.path)."""
-    global _runner
-    if _runner is None:
-        spec = importlib.util.spec_from_file_location("killer_bugs_run", HERE / "run.py")
-        _runner = importlib.util.module_from_spec(spec)
-        spec.loader.exec_module(_runner)
-    return _runner
 
 
 # ---------------------------------------------------------------- helpers
-
-def fail(msg: str, code: int = 2) -> None:
-    print(f"error: {msg}", file=sys.stderr)
-    raise SystemExit(code)
-
-
-def today() -> str:
-    return dt.date.today().isoformat()
-
-
-def runs_home() -> Path:
-    return Path(os.environ.get("KILLER_BUGS_HOME") or Path.home() / ".claude" / "killer-bugs").expanduser()
-
-
-def sandboxes_home() -> Path:
-    return Path(os.environ.get("KILLER_BUGS_SANDBOXES") or tempfile.gettempdir()).expanduser() / "kb"
-
-
-def load_json(path: Path, default):
-    deadline = time.monotonic() + 15
-    while True:
-        try:
-            return json.loads(path.read_text(encoding="utf-8")) if path.is_file() else default
-        except PermissionError:   # Windows, while another process replaces the file
-            if time.monotonic() > deadline:
-                raise
-            time.sleep(0.02)
-
-
-def save_json(path: Path, data) -> None:
-    path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(path.name + f".{os.getpid()}.tmp")
-    tmp.write_text(json.dumps(data, indent=2, ensure_ascii=False) + "\n", encoding="utf-8")
-    replace(tmp, path)
-
-
-def replace(src: Path, dst: Path, wait: float = 15) -> None:
-    """os.replace, retried: on Windows it fails while another process has dst open."""
-    deadline = time.monotonic() + wait
-    while True:
-        try:
-            os.replace(src, dst)
-            return
-        except PermissionError:
-            if time.monotonic() > deadline:
-                raise
-            time.sleep(0.02)
-
-
-@contextlib.contextmanager
-def locked(ws: Path, timeout: float = 300):
-    """One bugs.py at a time may change a run's files. Commands can run in parallel."""
-    ws.mkdir(parents=True, exist_ok=True)
-    lock, start = ws / ".lock", time.monotonic()
-    while True:
-        try:
-            fd = os.open(lock, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            os.write(fd, str(os.getpid()).encode())
-            os.close(fd)
-            break
-        except FileExistsError:
-            try:
-                if time.time() - lock.stat().st_mtime > 600:   # left by a crash
-                    lock.unlink(missing_ok=True)
-                    continue
-            except FileNotFoundError:
-                continue
-            if time.monotonic() - start > timeout:
-                fail(f"{lock} is held by another bugs.py; delete it if nothing is running")
-            time.sleep(0.05)
-    try:
-        yield
-    finally:
-        lock.unlink(missing_ok=True)
-
-
-def git(cwd: Path, *args: str, check: bool = True) -> str:
-    r = subprocess.run(["git", "-C", str(cwd), "-c", "core.longpaths=true", *args],
-                       capture_output=True, text=True, encoding="utf-8", errors="replace")
-    if check and r.returncode:
-        fail(f"git {' '.join(args)}: {r.stderr.strip() or r.stdout.strip()}")
-    return r.stdout if r.returncode == 0 else ""
-
-
-def git_ok(cwd: Path, *args: str) -> bool:
-    return subprocess.run(["git", "-C", str(cwd), *args], capture_output=True).returncode == 0
-
-
-def split0(s: str) -> list[str]:
-    return [x for x in s.split("\0") if x]
-
-
-def rmtree(path: Path) -> None:
-    def retry(func, p, _exc):   # git's object files are read-only, which stops Windows deleting them
-        try:
-            os.chmod(p, stat.S_IWRITE)
-            func(p)
-        except OSError:
-            pass
-    if not path.exists():
-        return
-    if sys.version_info >= (3, 12):
-        shutil.rmtree(path, onexc=retry)
-    else:
-        shutil.rmtree(path, onerror=retry)
-
 
 def workspace(a) -> Path:
     return Path(a.workspace).expanduser().resolve()
@@ -211,6 +124,7 @@ def load(a) -> tuple[Path, dict]:
     cfg = load_json(ws / "config.json", None)
     if cfg is None:
         fail(f"no config.json in {ws}; run init first")
+    cfg.setdefault("sandboxes_home", str(sandboxes_home()))   # runs from before the shared kit
     return ws, cfg
 
 
@@ -227,56 +141,11 @@ def mutate(ws: Path, fn):
     return out
 
 
-def mutate_cfg(ws: Path, fn):
-    with locked(ws):
-        cfg = load_json(ws / "config.json", {})
-        out = fn(cfg)
-        save_json(ws / "config.json", cfg)
-    return out
-
-
 def get_bug(db: dict, bid: str) -> dict:
     for b in db["bugs"]:
         if b["id"].lower() == bid.lower():
             return b
     fail(f"no bug {bid}")
-
-
-def read_reply(path: Path) -> dict:
-    """An agent's JSON: the whole file, or the last ```json block in a saved reply."""
-    if not path.is_file():
-        fail(f"no reply at {path}")
-    text = path.read_text(encoding="utf-8-sig")
-    try:
-        data = json.loads(text)
-    except json.JSONDecodeError:
-        data = None
-        for block in reversed(re.findall(r"```(?:json)?[ \t]*\n(.*?)```", text, re.S)):
-            try:
-                data = json.loads(block)
-                break
-            except json.JSONDecodeError:
-                continue
-        if data is None:
-            fail(f"{path} has no JSON that parses")
-    if not isinstance(data, dict):
-        fail(f"{path}: expected a JSON object")
-    return data
-
-
-def as_list(v) -> list:
-    if v is None or v == "":
-        return []
-    return v if isinstance(v, list) else [v]
-
-
-def as_cmd(v) -> list[str]:
-    """A command as a list of arguments; a string is split shell-style (use forward slashes)."""
-    if isinstance(v, list):
-        return [str(x) for x in v]
-    if isinstance(v, str) and v.strip():
-        return shlex.split(v)
-    return []
 
 
 def level(b: dict) -> str | None:
@@ -290,274 +159,9 @@ def rank_key(b: dict):
     return (sev, like, 1 if b.get("internal") else 0, int(b["id"][1:]))
 
 
-def parse_env(pairs) -> dict:
-    out = {}
-    for p in pairs or []:
-        name, eq, value = p.partition("=")
-        if not eq or not re.fullmatch(r"[A-Za-z_][A-Za-z0-9_]*", name):
-            fail(f"--env takes NAME=VALUE, not {p!r}")
-        out[name] = value
-    return out
-
-
 # ---------------------------------------------------------------- the project and its scope
 
-def find_top(path: Path) -> tuple[Path, bool]:
-    out = git(path, "rev-parse", "--show-toplevel", check=False).strip()
-    return (Path(out).resolve(), True) if out else (path, False)
-
-
-def has_head(top: Path) -> bool:
-    return git_ok(top, "rev-parse", "--verify", "-q", "HEAD")
-
-
-def project_key(top: Path, is_git: bool) -> str:
-    ident = git(top, "config", "--get", "remote.origin.url", check=False).strip() if is_git else ""
-    ident = ident or (str(top).lower() if os.name == "nt" else str(top))
-    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", top.name).strip("-") or "project"
-    return f"{slug}-{hashlib.sha1(ident.encode()).hexdigest()[:8]}"
-
-
-def all_files(top: Path, is_git: bool) -> list[str]:
-    if is_git:
-        names = split0(git(top, "ls-files", "-z", "-c", "-o", "--exclude-standard"))
-        return sorted({n for n in names if (top / n).is_file()})
-    out = []
-    for dirpath, dirnames, filenames in os.walk(top):
-        dirnames[:] = sorted(d for d in dirnames if d not in SKIP_DIRS)
-        for f in filenames:
-            out.append((Path(dirpath) / f).relative_to(top).as_posix())
-    return sorted(out)
-
-
-def changed_since(top: Path, base: str) -> list[str]:
-    names = split0(git(top, "diff", "--name-only", "--no-renames", "-z", base))
-    names += split0(git(top, "ls-files", "-z", "-o", "--exclude-standard"))
-    return sorted(set(names))
-
-
-def default_base(top: Path) -> str:
-    for ref in ("origin/main", "origin/master", "main", "master"):
-        if git_ok(top, "rev-parse", "--verify", "-q", ref + "^{commit}"):
-            return ref
-    fail("no main or master branch to compare with; give one, like --scope branch:develop")
-
-
-def is_text(path: Path) -> bool:
-    try:
-        if path.stat().st_size > TEXT_LIMIT:
-            return False
-        with path.open("rb") as f:
-            return b"\0" not in f.read(8192)
-    except OSError:
-        return False
-
-
-def excluded(f: str, patterns) -> bool:
-    for p in patterns or []:
-        p = p.replace("\\", "/").rstrip("/")
-        if fnmatch.fnmatch(f, p) or f.startswith(p + "/") or fnmatch.fnmatch(f.rsplit("/", 1)[-1], p):
-            return True
-    return False
-
-
-def resolve_scope(spec: str, top: Path, is_git: bool) -> tuple[dict, list[str]]:
-    kind, _, arg = spec.partition(":")
-    if kind == "repo":
-        files, scope = all_files(top, is_git), {"kind": "repo"}
-    elif kind == "path":
-        if not arg:
-            fail("give the folder or file, like --scope path:src")
-        p = Path(arg)
-        rel = (p.resolve() if p.is_absolute() else (top / p).resolve())
-        try:
-            sub = rel.relative_to(top).as_posix()
-        except ValueError:
-            fail(f"{arg} isn't inside {top}")
-        sub = "" if sub == "." else sub
-        files = [f for f in all_files(top, is_git) if not sub or f == sub or f.startswith(sub + "/")]
-        scope = {"kind": "path", "path": sub or "."}
-    elif kind in ("changes", "branch"):
-        if not is_git or not has_head(top):
-            fail(f"--scope {kind} needs a git repository with at least one commit")
-        if kind == "changes":
-            base = "HEAD"
-        else:
-            ref = arg or default_base(top)
-            base = git(top, "merge-base", ref, "HEAD").strip()
-        files = [f for f in changed_since(top, base) if (top / f).is_file()]
-        scope = {"kind": kind, "base": base, "ref": arg or ("HEAD" if kind == "changes" else ref)}
-    else:
-        fail(f"unknown scope {spec!r}: use repo, path:<folder>, changes or branch[:<base>]")
-    return scope, files
-
-
 # ---------------------------------------------------------------- sandboxes
-
-def toolchain_homes() -> dict:
-    """Where installed toolchains keep their packages. A new home folder would hide them."""
-    home = Path.home()
-    if os.name == "nt":
-        browsers = Path(os.environ.get("LOCALAPPDATA") or home / "AppData" / "Local") / "ms-playwright"
-    elif sys.platform == "darwin":
-        browsers = home / "Library" / "Caches" / "ms-playwright"
-    else:
-        browsers = Path(os.environ.get("XDG_CACHE_HOME") or home / ".cache") / "ms-playwright"
-    found = {
-        "PYTHONUSERBASE": Path(site.getuserbase()),
-        "CARGO_HOME": home / ".cargo",
-        "RUSTUP_HOME": home / ".rustup",
-        "GOPATH": home / "go",
-        "NUGET_PACKAGES": home / ".nuget" / "packages",
-        "GRADLE_USER_HOME": home / ".gradle",
-        "PLAYWRIGHT_BROWSERS_PATH": browsers,
-    }
-    return {k: str(v) for k, v in found.items() if k not in os.environ and v.exists()}
-
-
-def sandbox_env(root: Path, network: bool, extra: dict) -> dict:
-    home, tmp = root / "home", root / "tmp"
-    folders = {
-        "HOME": home, "USERPROFILE": home,
-        "APPDATA": home / "AppData" / "Roaming", "LOCALAPPDATA": home / "AppData" / "Local",
-        "XDG_CONFIG_HOME": home / ".config", "XDG_CACHE_HOME": home / ".cache",
-        "XDG_DATA_HOME": home / ".local" / "share", "XDG_STATE_HOME": home / ".local" / "state",
-        "TEMP": tmp, "TMP": tmp, "TMPDIR": tmp,
-    }
-    for p in folders.values():
-        p.mkdir(parents=True, exist_ok=True)
-    env = {k: str(v) for k, v in folders.items()}
-    if os.name == "nt":
-        env["HOMEDRIVE"], env["HOMEPATH"] = home.drive, str(home)[len(home.drive):]
-    env.update(toolchain_homes())
-    # Toolchains still find what's installed, but anything a command installs lands in the sandbox.
-    env.update({"CARGO_INSTALL_ROOT": str(home / ".cargo-install"), "GOBIN": str(home / "go" / "bin"),
-                "npm_config_prefix": str(home / ".npm-global")})
-    env.update({
-        "KB_SANDBOX": str(root), "KB_REPO": str(root / "repo"), "KB_REPRO": str(root / "repro"),
-        "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
-    })
-    if not network:
-        names = ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY"]
-        for n in names + ([x.lower() for x in names] if os.name != "nt" else []):
-            env[n] = DEAD_PROXY
-        env["NO_PROXY"] = LOOPBACK   # a project's tests often talk to a server on this machine
-        if os.name != "nt":
-            env["no_proxy"] = LOOPBACK
-        env.update({"NODE_USE_ENV_PROXY": "1", "npm_config_offline": "true", "PIP_NO_INDEX": "1",
-                    "UV_OFFLINE": "1", "CARGO_NET_OFFLINE": "true", "GOPROXY": "off"})
-    env.update(extra)
-    return {"network": network, "set": env, "drop": DROP_NAMES, "drop_pattern": SECRET_NAMES}
-
-
-def copy_path(src: Path, dst: Path) -> None:
-    if src.is_dir() and not src.is_symlink():
-        shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)
-    else:
-        dst.parent.mkdir(parents=True, exist_ok=True)
-        if dst.is_symlink() or dst.exists():
-            dst.unlink()
-        shutil.copy2(src, dst, follow_symlinks=False)
-
-
-def box_path(cfg: dict, name: str) -> Path:
-    return sandboxes_home() / cfg["run_id"] / name
-
-
-def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = None,
-                 network: bool | None = None, env: dict | None = None) -> Path:
-    if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
-        fail("a sandbox name is letters, digits, dots, dashes and underscores")
-    root = box_path(cfg, name)
-    if root.exists():
-        fail(f"sandbox {name} already exists at {root}; pick another name, or run clean")
-    src, dst = Path(cfg["repo"]), root / "repo"
-    root.mkdir(parents=True)
-
-    def register(c):
-        c.setdefault("sandboxes", {})[name] = str(root)
-        if not name.startswith(NOT_AGENTS):   # one sandbox per agent, so this counts the agents
-            c.setdefault("agents", []).append({"name": name, "at": dt.datetime.now().isoformat(timespec="seconds")})
-    mutate_cfg(ws, register)
-    notes = []
-    if cfg["git"] and has_head(src):
-        sha = git(src, "rev-parse", "--verify", (rev or "HEAD") + "^{commit}").strip()
-        r = subprocess.run(["git", "-c", "core.longpaths=true", "clone", "-q", "--no-checkout", str(src), str(dst)],
-                           capture_output=True, text=True)
-        if r.returncode:
-            drop_sandbox(ws, cfg, name)
-            fail(f"git clone into the sandbox failed: {r.stderr.strip()}")
-        git(dst, "remote", "remove", "origin")   # nothing in the sandbox can push to the real repo
-        # The project's line-ending settings, before checkout: a clone takes only the machine's, so a
-        # project that sets core.autocrlf=false would get CRLF files here on Windows and behave differently.
-        for key in ("user.name", "user.email", "core.autocrlf", "core.eol"):
-            v = git(src, "config", key, check=False).strip()
-            if v:
-                git(dst, "config", key, v)
-        branch = None if rev else cfg.get("branch")
-        if branch:
-            git(dst, "checkout", "-q", "-B", branch, sha)
-        else:
-            git(dst, "checkout", "-q", "--detach", sha)
-        if not rev:   # bring over uncommitted work: changes, new files, deletions, what's staged
-            for rel in changed_since(src, "HEAD"):
-                s, d = src / rel, dst / rel
-                if s.is_file() or s.is_symlink():
-                    copy_path(s, d)
-                elif d.is_file() or d.is_symlink():
-                    d.unlink()
-            staged = split0(git(src, "diff", "--cached", "--name-only", "--no-renames", "-z"))
-            for i in range(0, len(staged), 100):
-                git(dst, "add", "-A", "--", *staged[i:i + 100])
-        if (src / ".gitmodules").exists():
-            notes.append("submodules aren't copied")
-    else:
-        if rev:
-            drop_sandbox(ws, cfg, name)
-            fail("--rev needs a git repository with commits")
-        shutil.copytree(src, dst, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-    for inc in dict.fromkeys([*cfg.get("include", []), *include]):
-        s = (src / inc).resolve()
-        if not s.exists():
-            notes.append(f"--include {inc}: not found, skipped")
-            continue
-        copy_path(s, dst / s.relative_to(src))
-    for d in ("repro", "logs"):
-        (root / d).mkdir(exist_ok=True)
-    extra = {**cfg.get("env", {}), **(env or {})}
-    save_json(root / "env.json", sandbox_env(root, cfg["network"] if network is None else network, extra))
-    shutil.copy2(HERE / "run.py", root / "run.py")
-    for n in notes:
-        print(f"note: {n}")
-    return root
-
-
-def drop_sandbox(ws: Path, cfg: dict, name: str) -> None:
-    path = mutate_cfg(ws, lambda c: c.get("sandboxes", {}).pop(name, None))
-    cfg.get("sandboxes", {}).pop(name, None)
-    rmtree(Path(path) if path else box_path(cfg, name))
-
-
-def run_command_line(root: Path) -> str:
-    return f'"{sys.executable}" "{root / "run.py"}" -- <command>'
-
-
-def keep_scratch(box: Path, dst: Path) -> None:
-    """Copy an agent's scratch folder (its reproductions) into the run, without its reply."""
-    rmtree(dst)
-    shutil.copytree(box / "repro", dst, ignore=shutil.ignore_patterns("__pycache__", REPLY, "*.pyc"))
-
-
-def classify(r: dict) -> str:
-    """A reproduction's run: 'shows' (failed and said what it saw), 'behaves', or 'inconclusive'.
-
-    A failure with no OBSERVED: line may be a crash, a missing command or a hang, not the bug."""
-    if not runner().failed(r):
-        return "behaves"
-    if not r["timed_out"] and re.search(r"^\s*OBSERVED:", r["out"], re.M):
-        return "shows"
-    return "inconclusive"
-
 
 def runs_total(runs) -> int:
     m = re.match(r"\s*(\d+)\s*(?:/|of)\s*(\d+)", str(runs or ""))
@@ -572,7 +176,7 @@ def verify_repro(ws: Path, cfg: dict, bid: str, repro_dir: str | None, cmd: list
     run = runner()
     try:
         if repro_dir and (ws / repro_dir).is_dir():
-            shutil.copytree(ws / repro_dir, root / "repro", dirs_exist_ok=True)
+            shutil.copytree(ws / repro_dir, root / SCRATCH, dirs_exist_ok=True)
         res = run.run_many(root, cmd, repeat, timeout, log=False)
     finally:
         drop_sandbox(ws, cfg, name)
@@ -638,6 +242,7 @@ def cmd_init(a) -> None:
         "exclude": a.exclude or [],
         "env": parse_env(a.env),
         "depth": a.depth,
+        "sandboxes_home": str(sandboxes_home()),
         "sandboxes": {},
         "agents": [],
     }
@@ -667,11 +272,7 @@ def cmd_sandbox(a) -> None:
     root = make_sandbox(cfg, ws, a.name, a.include or [], a.rev, True if a.net else None, parse_env(a.env))
     net = cfg["network"] or a.net
     print(f"Sandbox {a.name} is ready.")
-    print(f"  project copy: {root / 'repo'}" + (f" (at {a.rev})" if a.rev else ""))
-    print(f"  run things:   {run_command_line(root)}")
-    print(f"  scratch:      {root / 'repro'}   (the agent writes its reply to {REPLY} here)")
-    print(f"  network:      {'allowed' if net else OFFLINE_NOTE}")
-    print("  home, temp and app-data folders are the sandbox's own; tokens and keys are left out")
+    print(kit.sandbox_text(root, net, a.rev, SCRATCH))
 
 
 def new_bug(db: dict, c: dict, source: str) -> dict | None:
@@ -746,7 +347,7 @@ def reply_source(a, cfg) -> tuple[Path, Path | None]:
         box = Path(cfg.get("sandboxes", {}).get(a.sandbox) or box_path(cfg, a.sandbox))
         if not box.is_dir():
             fail(f"no sandbox called {a.sandbox} in this run")
-        return box / "repro" / REPLY, box
+        return box / SCRATCH / REPLY, box
     return Path(a.reply), None
 
 
@@ -1035,7 +636,7 @@ def cmd_check_fix(a) -> None:
     run = runner()
     try:
         if repro and repro.is_dir():
-            shutil.copytree(repro, root / "repro", dirs_exist_ok=True)
+            shutil.copytree(repro, root / SCRATCH, dirs_exist_ok=True)
         with_fix = run.run_many(root, cmd, a.repeat, a.timeout, a.cwd)
         for f in fixes:
             if git_ok(top, "cat-file", "-e", f"{base}:{f}"):
@@ -1089,12 +690,12 @@ def cmd_recheck(a) -> None:
     run, results = runner(), []
     try:
         for e in entries:
-            rmtree(root / "repro")
+            rmtree(root / SCRATCH)
             src = proj / e["repro_dir"] if e.get("repro_dir") else None
             if src and src.is_dir():
-                shutil.copytree(src, root / "repro")
+                shutil.copytree(src, root / SCRATCH)
             else:
-                (root / "repro").mkdir()
+                (root / SCRATCH).mkdir()
             res = run.run_many(root, as_cmd(e["command"]), 1, a.timeout)
             kind = classify(res["runs"][0])
             state = "inconclusive" if kind == "inconclusive" else \
@@ -1155,7 +756,7 @@ def cmd_clean(a) -> None:
     names = list(cfg.get("sandboxes", {}))
     for name in names:
         drop_sandbox(ws, cfg, name)
-    base = sandboxes_home() / cfg["run_id"]
+    base = Path(cfg["sandboxes_home"]) / cfg["run_id"]
     if base.is_dir():
         for leftover in base.iterdir():   # a sandbox whose agent crashed before it was recorded
             rmtree(leftover)

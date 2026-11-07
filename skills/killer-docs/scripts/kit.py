@@ -26,6 +26,11 @@ What it gives a script:
                   scratch/   where the agent keeps its files and writes reply.json
                   logs/      every run's output
                   run.py     runs a command in repo/ with the sandbox's environment
+                With base=False the copy keeps the project's own git state instead: HEAD,
+                branch and what's staged as they are in the project, uncommitted work left
+                uncommitted, and no base commit, so tools that read git (a version from git
+                describe, a hook that reads what's staged) behave as they do in the project.
+                Such a sandbox can't be diffed. scratch= names the scratch folder.
   diffs         kit.box_diff(box) is everything an agent changed in repo/ since the base,
                 as a patch with binary files; kit.apply_patch(folder, patch) applies one.
   fresh reruns  kit.run_fresh(...) runs a command in a new sandbox, optionally with a
@@ -480,7 +485,7 @@ def toolchain_homes() -> dict:
     return {k: str(v) for k, v in found.items() if k not in os.environ and v.exists()}
 
 
-def sandbox_env(root: Path, network: bool, extra: dict) -> dict:
+def sandbox_env(root: Path, network: bool, extra: dict, scratch: str = "scratch") -> dict:
     home, tmp = root / "home", root / "tmp"
     folders = {
         "HOME": home, "USERPROFILE": home,
@@ -499,7 +504,7 @@ def sandbox_env(root: Path, network: bool, extra: dict) -> dict:
     env.update({"CARGO_INSTALL_ROOT": str(home / ".cargo-install"), "GOBIN": str(home / "go" / "bin"),
                 "npm_config_prefix": str(home / ".npm-global")})
     env.update({
-        "KILLER_SANDBOX": str(root), "KILLER_REPO": str(root / "repo"), "KILLER_SCRATCH": str(root / "scratch"),
+        "KILLER_SANDBOX": str(root), "KILLER_REPO": str(root / "repo"), "KILLER_SCRATCH": str(root / scratch),
         "GIT_TERMINAL_PROMPT": "0", "GCM_INTERACTIVE": "never",
     })
     if not network:
@@ -545,10 +550,15 @@ def _commit_base(dst: Path, excludes: list[str]) -> str:
 
 
 def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = None,
-                 network: bool | None = None, env: dict | None = None) -> Path:
-    """A fresh copy of the project for one agent or one check; returns the sandbox folder."""
+                 network: bool | None = None, env: dict | None = None, *, base: bool = True,
+                 scratch: str = "scratch") -> Path:
+    """A fresh copy of the project for one agent or one check; returns the sandbox folder.
+
+    base=False keeps the project's git state and makes no base commit (see the module docstring)."""
     if not re.fullmatch(r"[A-Za-z0-9._-]+", name):
         fail("a sandbox name is letters, digits, dots, dashes and underscores")
+    if not re.fullmatch(r"[A-Za-z0-9._-]+", scratch) or scratch in ("repo", "logs", "home", "tmp"):
+        fail(f"{scratch!r} can't be a scratch folder's name")
     root = box_path(cfg, name)
     if root.exists():
         fail(f"sandbox {name} already exists at {root}; pick another name, or run clean")
@@ -585,13 +595,19 @@ def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = N
                 git(dst, "read-tree", sha)
                 for rel in all_files(src, True):
                     copy_path(src / rel, dst / rel)
+                if not base:   # what's staged in the project is staged here too
+                    staged = split0(git(src, "diff", "--cached", "--name-only", "--no-renames", "-z"))
+                    for i in range(0, len(staged), 100):
+                        git(dst, "add", "-A", "--", *staged[i:i + 100])
+                    git(dst, "update-index", "-q", "--refresh", check=False)
             if (src / ".gitmodules").exists():
                 notes.append("submodules aren't copied")
         else:
             if rev:
                 fail("--rev needs a git repository with commits")
             shutil.copytree(src, dst, symlinks=True, ignore=shutil.ignore_patterns(".git"))
-            git(dst, "init", "-q")
+            if base:
+                git(dst, "init", "-q")
         included = []
         for inc in dict.fromkeys([*cfg.get("include", []), *include]):
             s = (src / inc).resolve()
@@ -600,12 +616,12 @@ def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = N
                 continue
             copy_path(s, dst / s.relative_to(src))
             included.append(s.relative_to(src).as_posix())
-        base = _commit_base(dst, included)
-        (root / "base.txt").write_text(base + "\n", encoding="utf-8")
-        for d in ("scratch", "logs"):
+        if base:
+            (root / "base.txt").write_text(_commit_base(dst, included) + "\n", encoding="utf-8")
+        for d in (scratch, "logs"):
             (root / d).mkdir(exist_ok=True)
         extra = {**cfg.get("env", {}), **(env or {})}
-        save_json(root / "env.json", sandbox_env(root, cfg["network"] if network is None else network, extra))
+        save_json(root / "env.json", sandbox_env(root, cfg["network"] if network is None else network, extra, scratch))
         shutil.copy2(HERE / "run.py", root / "run.py")
     except BaseException:
         drop_sandbox(ws, cfg, name)
@@ -642,25 +658,28 @@ def run_command_line(root: Path) -> str:
     return f'"{sys.executable}" "{root / "run.py"}" -- <command>'
 
 
-def sandbox_text(root: Path, network: bool, rev: str | None = None) -> str:
+def sandbox_text(root: Path, network: bool, rev: str | None = None, scratch: str = "scratch") -> str:
     """What `<script> sandbox` prints, for the lead to paste into a brief."""
     return "\n".join([
         f"  project copy: {root / 'repo'}" + (f" (at {rev})" if rev else ""),
         f"  run things:   {run_command_line(root)}",
-        f"  scratch:      {root / 'scratch'}   (the agent writes its reply to {REPLY} here)",
+        f"  scratch:      {root / scratch}   (the agent writes its reply to {REPLY} here)",
         f"  network:      {'allowed' if network else OFFLINE_NOTE}",
         "  home, temp and app-data folders are the sandbox's own; tokens and keys are left out",
     ])
 
 
-def keep_scratch(box: Path, dst: Path) -> None:
+def keep_scratch(box: Path, dst: Path, scratch: str = "scratch") -> None:
     """Copy an agent's scratch folder into the run, without its reply."""
     rmtree(dst)
-    shutil.copytree(Path(box) / "scratch", dst, ignore=shutil.ignore_patterns("__pycache__", REPLY, "*.pyc"))
+    shutil.copytree(Path(box) / scratch, dst, ignore=shutil.ignore_patterns("__pycache__", REPLY, "*.pyc"))
 
 
 def box_base(box: Path) -> str:
-    return (Path(box) / "base.txt").read_text(encoding="utf-8").strip()
+    p = Path(box) / "base.txt"
+    if not p.is_file():
+        fail(f"{box} was made with base=False, so it has no base commit to diff against")
+    return p.read_text(encoding="utf-8").strip()
 
 
 def box_diff(box: Path, paths=()) -> str:

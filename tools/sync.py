@@ -14,11 +14,11 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-PYTHON_KIT = ["killer-tests", "killer-docs", "killer-perf", "killer-release", "killer-upgrade", "killer-goal"]
+PYTHON_KIT = ["killer-bugs", "killer-tests", "killer-docs", "killer-perf", "killer-release", "killer-upgrade", "killer-goal"]
 
 SHARED = {
     "tools/shared/kit.py": PYTHON_KIT,
-    "tools/shared/run.py": ["killer-bugs", *PYTHON_KIT],
+    "tools/shared/run.py": PYTHON_KIT,
     "skills/killer-design/scripts/fonts.mjs": ["killer-slides"],
 }
 

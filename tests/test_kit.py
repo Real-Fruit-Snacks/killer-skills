@@ -156,14 +156,44 @@ try:
     check("plain folder: diffs work without git in the project", kit.changed_files(kit.box_diff(pbox)) == ["a.py"])
     check("plain folder: the project itself is left alone", not (plain / ".git").exists())
 
+    # ---------- base=False: the project's own git state, and a scratch folder with another name
+    g(proj, "add", "app.py")   # one change staged, the rest left as it is
+    nb = kit.make_sandbox(cfg, ws, "nobase", base=False, scratch="repro")
+    nrepo = nb / "repo"
+    check("base=False: HEAD and branch are the project's, and there's no base commit",
+          g(nrepo, "rev-parse", "HEAD") == g(proj, "rev-parse", "HEAD")
+          and g(nrepo, "branch", "--show-current").strip() == "main" and not (nb / "base.txt").exists())
+    check("base=False: git status matches the project's: staged stays staged, the rest uncommitted",
+          g(nrepo, "status", "--porcelain") == g(proj, "status", "--porcelain")
+          and g(nrepo, "diff", "--cached", "--name-only").split() == ["app.py"],
+          (g(nrepo, "status", "--porcelain"), g(proj, "status", "--porcelain")))
+    env_set = json.loads((nb / "env.json").read_text(encoding="utf-8"))["set"]
+    check("scratch=: the folder, KILLER_SCRATCH and the sandbox text use the name",
+          (nb / "repro").is_dir() and not (nb / "scratch").exists() and Path(env_set["KILLER_SCRATCH"]) == nb / "repro"
+          and str(nb / "repro") in kit.sandbox_text(nb, False, scratch="repro"), env_set.get("KILLER_SCRATCH"))
+    try:
+        kit.box_base(nb)
+        check("base=False: asking for its base fails plainly", False)
+    except SystemExit:
+        check("base=False: asking for its base fails plainly", True)
+    g(proj, "reset", "-q", "app.py")
+    pnb = kit.make_sandbox(pcfg, pws, "pnb", base=False)
+    check("base=False on a plain folder: the copy isn't made a git repo either",
+          (pnb / "repo" / "a.py").is_file() and not (pnb / "repo" / ".git").exists())
+
     # ---------- names, cleaning
     try:
         kit.make_sandbox(cfg, ws, "bad name")
         check("sandbox: a bad name is refused", False)
     except SystemExit:
         check("sandbox: a bad name is refused", True)
+    try:
+        kit.make_sandbox(cfg, ws, "s2", scratch="repo")
+        check("sandbox: a scratch folder can't be called repo", False)
+    except SystemExit:
+        check("sandbox: a scratch folder can't be called repo", True)
     n = kit.clean_sandboxes(ws, cfg)
-    check("clean: removes every sandbox", n == 2 and not box.exists() and not old.exists(), n)
+    check("clean: removes every sandbox", n == 3 and not box.exists() and not old.exists() and not nb.exists(), n)
     kit.clean_sandboxes(pws, pcfg)
 
     # ---------- many processes reading and replacing one file (Windows refuses a replace while it's open)
