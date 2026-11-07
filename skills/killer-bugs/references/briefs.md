@@ -247,6 +247,8 @@ Below <is a bug report | are <n> bug reports> from <the area: the files or featu
 
 If none of these holds after an honest look, the report stands. Then judge how much it matters.
 
+**Check that each reproduction can pass.** A reproduction that also fails on correct code proves nothing, and it would make a real fix look wrong. In your copy, which is thrown away, make the smallest change that removes the bug, and rerun the reproduction: it must now pass. If it still fails, the reproduction is wrong. Say so, and why: reading the wrong field, expecting the wrong value, a crash of its own. Then put the code back as it was and judge the bug itself. If no small change removes it, say you couldn't check.
+
 ## The reports
 
 <For each one:>
@@ -287,7 +289,9 @@ Write this JSON to `reply.json` in the scratch folder, one entry per report:
       "reason": "<the evidence: quote the doc, test, code, output or git history that settles it>",
       "severity": "<high | medium | low>",
       "likelihood": "<common | occasional | rare>",
-      "question": "<only for question: what the project's owner has to decide, in one sentence>"
+      "question": "<only for question: what the project's owner has to decide, in one sentence>",
+      "repro_passes_without_bug": "<true | false | null if no small change removes it>",
+      "repro_problem": "<only when false: what's wrong with the reproduction>"
     }
   ]
 }

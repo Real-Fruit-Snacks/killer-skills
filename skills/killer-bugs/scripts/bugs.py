@@ -545,7 +545,15 @@ def challenge_changes(data: dict) -> dict:
     v = data.get("verdict")
     if v not in ("stands", "question", "knocked-down", "docs-stale"):
         fail(f"a challenger's verdict is stands, question, knocked-down or docs-stale, not {v!r}")
-    changes = {"challenge": {k: data.get(k) for k in ("verdict", "reason", "severity", "likelihood", "question")}}
+    changes = {"challenge": {k: data.get(k) for k in ("verdict", "reason", "severity", "likelihood", "question",
+                                                       "repro_passes_without_bug", "repro_problem")}}
+    # A reproduction that still fails with the bug removed can't tell a fix from no fix. The bug can still
+    # stand; its reproduction gets rewritten before anyone fixes against it.
+    passes = data.get("repro_passes_without_bug")
+    if passes in (False, "false"):
+        changes["repro_ok"] = False
+    elif passes in (True, "true"):
+        changes["repro_ok"] = True
     if data.get("severity") in SEVERITY:
         changes["severity"] = data["severity"]
     if data.get("likelihood") in LIKELIHOOD:
@@ -734,6 +742,9 @@ def cmd_check_fix(a) -> None:
         cmd = cmd or as_cmd((rb.get("proof") or {}).get("command"))
         repro = ws / rb["repro_dir"] if rb.get("repro_dir") else None
         b = b or rb
+        if rb.get("repro_ok") is False:
+            fail(f"{rb['id']}'s reproduction still failed with the bug removed, so it can't check a fix. Rewrite it "
+                 "(it has to pass once the bug is gone), save it with update --as prover, then check the fix")
     if not cmd:
         fail("give the test command after --, or --repro <bug> to use a bug's reproduction")
     tests = [f for f in changed if is_test(f)]
@@ -810,6 +821,8 @@ def cmd_recheck(a) -> None:
             state = "inconclusive" if kind == "inconclusive" else \
                 {("fixed", True): "CAME BACK", ("fixed", False): "still fixed",
                  ("open", True): "still there", ("open", False): "no longer shows"}[(e["status"], kind == "shows")]
+            if e.get("repro_ok") is False and kind == "shows":
+                state += " (unreliable: this reproduction also fails on correct code)"
             results.append({"id": e["id"], "title": e["title"], "was": e["status"], "now": state})
             print(f"{e['id']:<5} {state:<16} {e['title']}")
     finally:
@@ -843,7 +856,7 @@ def cmd_close(a) -> None:
             else:
                 updated += 1
             e.update({"title": b["title"], "claim": b["claim"], "where": b["where"], "last_seen": today(),
-                      "severity": b.get("severity"), "likelihood": b.get("likelihood")})
+                      "severity": b.get("severity"), "likelihood": b.get("likelihood"), "repro_ok": b.get("repro_ok")})
             if status:
                 e["status"] = status
             if ws.name not in e["runs"]:
@@ -913,6 +926,10 @@ def bug_block(b: dict) -> list[str]:
     out.append(f"- **Found by:** {finders(b)}")
     if c.get("reason"):   # the full reason is in bugs.json; the report keeps it readable
         out.append(f"- **Why it stands:** {short(c['reason'])}")
+    if b.get("repro_ok") is False:
+        why = (b.get("challenge") or {}).get("repro_problem")
+        out.append("- **Reproduction needs rewriting:** it still fails with the bug removed"
+                   + (f" ({short(why, 200)})" if why else "") + ", so it can't check a fix")
     fc = b.get("fix_check")
     if fc:
         out.append(f"- **Fix check:** {fc['verdict']} ({fc['check']})")
@@ -1080,11 +1097,21 @@ def role_counts(cfg: dict) -> dict:
 
 def cmd_decide(a) -> None:
     ws, _ = load(a)
+    if bool(a.text) == bool(a.drop):
+        fail("give the decision's text, or --drop <number> to take one back")
     with locked(ws):
         items = load_json(ws / "decisions.json", [])
-        items.append({"text": a.text, "at": dt.datetime.now().isoformat(timespec="seconds")})
+        if a.drop:
+            if not 1 <= a.drop <= len(items):
+                fail(f"there's no decision {a.drop}; there are {len(items)}")
+            gone = items.pop(a.drop - 1)
+        else:
+            items.append({"text": a.text, "at": dt.datetime.now().isoformat(timespec="seconds")})
         save_json(ws / "decisions.json", items)
-    print(f"Recorded decision {len(items)}: {a.text}")
+    if a.drop:
+        print(f"Took back decision {a.drop}: {gone['text']}")
+    else:
+        print(f"Recorded decision {len(items)}: {a.text}")
 
 
 def cmd_wait(a) -> None:
@@ -1379,7 +1406,8 @@ def main(argv=None) -> None:
     s.add_argument("--timeout", type=float, default=300)
 
     s = cmd("decide", cmd_decide, "Record a call the user should check; the report lists it.")
-    s.add_argument("text")
+    s.add_argument("text", nargs="?")
+    s.add_argument("--drop", type=int, help="take back decision N (as numbered when it was recorded)")
 
     s = cmd("wait", cmd_wait, "Record an outward action (a push, an issue) left for the user's OK.")
     s.add_argument("text")

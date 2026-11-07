@@ -661,6 +661,44 @@ try:
     check("coverage: a file named by its path inside the sandbox counts as read", "hunter:read-s#1: 1 in scope" in out, out)
     bugs("clean", "-w", ws7)
 
+    # a reproduction that also fails on correct code, and taking back a decision
+    out, _ = bugs("init", "--repo", proj, "--slug", "badrepro")
+    ws8 = run_folder(out)
+    out, _ = bugs("sandbox", "-w", ws8, "read-z")
+    zb = box_path(out)
+    (zb / "repro" / "always").mkdir()
+    (zb / "repro" / "always" / "r.py").write_text(show("always"))   # fails whatever the code does
+    (zb / "repro" / "reply.json").write_text(json.dumps({"candidates": [
+        {"title": "z", "claim": "z breaks", "severity": "high", "command": [PY, "../repro/always/r.py"]}]}))
+    bugs("collect", "-w", ws8, "--sandbox", "read-z", "--source", "hunter:read-z#1")
+    out, _ = bugs("sandbox", "-w", ws8, "challenge-z")
+    box_path(out).joinpath("repro", "reply.json").write_text(json.dumps({"verdicts": [
+        {"id": "B1", "verdict": "stands", "reason": "the crash is real", "severity": "high", "likelihood": "common",
+         "repro_passes_without_bug": False, "repro_problem": "it reads the field 'name', but the output says 'Name'"}]}))
+    bugs("challenges", "-w", ws8, "--sandbox", "challenge-z")
+    bugs("report", "-w", ws8)
+    rep8 = (ws8 / "report.md").read_text(encoding="utf-8")
+    check("report: a reproduction that still fails with the bug removed is flagged for rewriting",
+          "Reproduction needs rewriting" in rep8 and "'Name'" in rep8, rep8)
+    (proj / "calc.py").write_text(FIXED + "# touched\n")
+    out, _ = bugs("check-fix", "-w", ws8, "--repro", "B1", ok=(2,))
+    check("check-fix --repro: refuses a reproduction known to fail on correct code", "can't check a fix" in out, out)
+    g(proj, "checkout", "--", "calc.py")
+    bugs("close", "-w", ws8)
+    out, _ = bugs("init", "--repo", proj, "--slug", "badrepro-next")
+    out, _ = bugs("recheck", "-w", run_folder(out))
+    check("recheck: an unreliable reproduction says so instead of claiming the bug is still there",
+          "unreliable" in out, out)
+    bugs("decide", "-w", ws8, "first call")
+    bugs("decide", "-w", ws8, "a call made on a stale clock")
+    out, _ = bugs("decide", "-w", ws8, "--drop", "2")
+    decisions = json.loads((ws8 / "decisions.json").read_text())
+    check("decide --drop: takes a decision back", "Took back decision 2" in out
+          and [d["text"] for d in decisions] == ["first call"], (out, decisions))
+    out, _ = bugs("decide", "-w", ws8, "--drop", "5", ok=(2,))
+    check("decide --drop: a number that isn't there is refused", "no decision 5" in out, out)
+    bugs("clean", "-w", ws8)
+
     # ---------- a folder that isn't a git repo
     plain = tmp / "plain"
     (plain / "node_modules" / "x").mkdir(parents=True)

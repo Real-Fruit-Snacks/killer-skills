@@ -185,7 +185,7 @@ With "Report, then ask", ask which bugs to fix (AskUserQuestion, multiSelect, th
 
 Work on a new local branch, `killer-bugs/<date>`. For each bug, worst first:
 
-1. **Test first.** Add a regression test to the project's own tests, written like the others. If the project has no tests, don't invent a framework: the saved reproduction is the test (`check-fix --repro B3`).
+1. **Test first.** If the report says a bug's reproduction needs rewriting (it still failed with the bug removed), rewrite it before anything else: it has to fail now and pass once the bug is gone. Add a regression test to the project's own tests, written like the others. If the project has no tests, don't invent a framework: the saved reproduction is the test (`check-fix --repro B3`).
 2. **Fix the cause, every copy of it.** A fix that only handles the reproduction's exact input isn't a fix.
 3. **Prove it:**
    ```

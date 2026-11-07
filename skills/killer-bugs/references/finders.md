@@ -20,6 +20,7 @@ Paste each kind's lens, "Look for" list and probe into the briefs as they are.
 - conditions that are off by one, inverted, or check the wrong thing; patterns that match too much or too little
 - what the code claims (its names, comments, messages, docs) against what it does
 - anything a caller can reach that loses or overwrites data, leaks a secret, or reports success after failing
+- a protection applied on one path and missing on another that handles the same data: find each redact, escape, validate or sanitize step, then every other place that writes, logs, sends or exports that data, and check it goes through the step too. A rule that one of three exporters applies is the shape of most leaks
 **Probe:** for each suspicion, try it in your copy before reporting it.
 **Recommend it when:** always.
 
