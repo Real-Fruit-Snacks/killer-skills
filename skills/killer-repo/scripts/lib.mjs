@@ -7,7 +7,7 @@ import { fileURLToPath, pathToFileURL } from 'node:url';
 import { execSync, execFileSync } from 'node:child_process';
 import http from 'node:http';
 import fs from 'node:fs/promises';
-import { existsSync, readdirSync } from 'node:fs';
+import { existsSync, readdirSync, realpathSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 
@@ -109,8 +109,11 @@ export function run(cmd, args, opts = {}) {
   }
 }
 
+// The repo's top folder, spelled the way the file system does (8.3 short names and symlinks resolved), so
+// a path under it can be made relative to it.
 export function repoRoot(dir) {
-  return run('git', ['-C', dir, 'rev-parse', '--show-toplevel']) || dir;
+  const top = run('git', ['-C', dir, 'rev-parse', '--show-toplevel']);
+  return realpathSync.native(top || dir);
 }
 
 /** owner/name from --repo, gh, or the origin remote. */

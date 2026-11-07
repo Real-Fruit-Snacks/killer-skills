@@ -342,13 +342,27 @@ function git(cwd, args, opts = {}) {
   if (r.error) return { ok: false, out: '', err: String(r.error.message) };
   return { ok: r.status === 0, out: r.stdout || '', err: r.stderr || '' };
 }
+// One spelling of a path, so path.relative can compare two: Windows 8.3 short names (RUNNER~1 for
+// runneradmin) and symlinks (macOS's /var is /private/var) resolved, as git spells its top folder. A path
+// that doesn't exist yet keeps its missing tail.
+function canonical(p) {
+  let head = path.resolve(p);
+  const tail = [];
+  while (!existsSync(head)) {
+    const up = path.dirname(head);
+    if (up === head) return path.resolve(p);
+    tail.unshift(path.basename(head));
+    head = up;
+  }
+  return path.join(realpathSync.native(head), ...tail);
+}
 function gitTop(dir) {
   const r = git(dir, ['rev-parse', '--show-toplevel']);
-  return r.ok ? path.resolve(r.out.trim()) : null;
+  return r.ok ? canonical(r.out.trim()) : null;
 }
 function gitStatus(top, deckDir) {
   if (!top) return null;
-  const r = git(top, ['status', '--porcelain=v1', '--untracked-files=all', '--', path.relative(top, deckDir) || '.']);
+  const r = git(top, ['status', '--porcelain=v1', '--untracked-files=all', '--', path.relative(top, canonical(deckDir)) || '.']);
   return r.ok ? r.out : null;
 }
 
@@ -1240,7 +1254,7 @@ async function cmdAudience(a) {
   roomLeaks(cfg.room, cfg.messages, 'audience -w <run> --room "<who they are>"');
   const sb = sandboxesHome();
   for (const p of [ws, cfg.deckDir]) {
-    const rel = path.relative(p, sb);
+    const rel = path.relative(canonical(p), canonical(sb));
     if (!rel.startsWith('..') && !path.isAbsolute(rel)) fail(`the audience folders (${sb}) would sit inside ${p}, where the audience could find the deck and its notes. Point KILLER_SLIDES_SANDBOXES somewhere else.`);
   }
   for (const r of cfg.rounds) if (r.status !== 'done') { r.status = 'abandoned'; await rmBox(r.box); await rmBox(r.matchBox); }
@@ -1422,7 +1436,8 @@ async function cmdLand(a) {
   if (ATTRIBUTION.test(message)) fail('the commit message mentions an AI or a co-author. Commits must read as the user\'s own work: say what changed and why, nothing else.');
   const top = gitTop(cfg.deckDir);
   if (!top) { console.log(`${cfg.deckDir} isn't in a git repository, so there is nothing to commit. The deck is in place as it is.`); return 0; }
-  const inDeck = (f) => { const r = path.relative(cfg.deckDir, path.join(top, f)); return !r.startsWith('..') && !path.isAbsolute(r); };
+  const deckDir = canonical(cfg.deckDir);
+  const inDeck = (f) => { const r = path.relative(deckDir, path.join(top, f)); return !r.startsWith('..') && !path.isAbsolute(r); };
   const before = git(top, ['diff', '--cached', '--name-only']).out.split('\n').filter(Boolean).filter((f) => !inDeck(f));
   if (before.length) fail(`other files are already staged (${before.slice(0, 5).join(', ')}): land commits only the deck folder. Unstage them first; nothing was changed.`);
   const current = git(top, ['symbolic-ref', '-q', '--short', 'HEAD']).out.trim() || null;
@@ -1438,7 +1453,7 @@ async function cmdLand(a) {
     const sw = git(top, exists ? ['switch', target] : ['switch', '-c', target]);
     if (!sw.ok) fail(`couldn't switch to ${target}: ${sw.err.trim()}`);
   }
-  const rel = path.relative(top, cfg.deckDir) || '.';
+  const rel = path.relative(top, deckDir) || '.';
   const add = git(top, ['add', '-A', '--', rel]);
   if (!add.ok) fail(`git add failed: ${add.err.trim()}`);
   const staged = git(top, ['diff', '--cached', '--name-only']).out.split('\n').filter(Boolean);

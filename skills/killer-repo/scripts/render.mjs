@@ -33,7 +33,7 @@
  */
 import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
-import { existsSync, statSync } from 'node:fs';
+import { existsSync, realpathSync, statSync } from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
@@ -243,8 +243,9 @@ let label = opt.label;
 let readme;
 let approximateWhy = null;
 if (!live) {
-  const t = path.resolve(target || '.');
-  if (!existsSync(t)) { console.error(`not found: ${t}`); process.exit(1); }
+  const given = path.resolve(target || '.');
+  if (!existsSync(given)) { console.error(`not found: ${given}`); process.exit(1); }
+  const t = realpathSync.native(given);   // spelled as repoRoot spells the repo, so the README's folder is relative to it
   readme = statSync(t).isDirectory() ? findReadme(t) : t;
   if (!readme) { console.error(`no README found in ${t}`); process.exit(1); }
   root = repoRoot(path.dirname(readme));
