@@ -1,6 +1,6 @@
 ---
 name: killer-repo
-description: "Make a GitHub repository page people land on and think 'whoa': a README built around one wow moment that shows the project doing its most interesting true thing, plus the description, topics, social card, community files and workflows around it. Invents an identity for each repo instead of applying a template, checks every claim by running it, renders the README exactly as GitHub will in light and dark at desktop and phone widths, and fixes what it sees. Starts with a few setup questions. Use whenever the user wants to write, rewrite, improve, polish or refresh a README or repo page, set up a repo's About panel, topics or social preview, add issue templates or repo workflows, or get a project ready to launch or share, even if they only say 'my repo looks boring' or 'make this README better'. For the project's website itself, killer-design fits better."
+description: "Make a GitHub repository page people land on and think 'whoa': a README built around one wow moment that shows the project doing its most interesting true thing, plus the description, topics, social card, community files and workflows around it. Invents an identity for each repo instead of applying a template, checks every claim by running it, renders the README exactly as GitHub will in light and dark at desktop and phone widths, and fixes what it sees. Starts with a few setup questions. Use whenever the user wants to write, rewrite, improve, polish or refresh a README or repo page, set up a repo's About panel, topics or social preview, add issue templates or repo workflows, or get a project ready to launch or share, even if they only say 'my repo looks boring' or 'make this README better'. For the project's website itself, killer-design fits better; for docs that must work as written, killer-docs; for cutting a release, killer-release."
 ---
 
 # Killer repo
@@ -147,7 +147,16 @@ If the user chose the council, run killer-council on the README with seats that 
   - what changed, file by file
   - what you verified by running it, and what you couldn't
   - which public changes were applied and which are waiting; where the card is and where to upload it
-  - proposals beyond the scope, such as a site with killer-design, a release workflow, or a demo for the release page
+  - proposals beyond the scope, such as a site with killer-design, the docs walked by a newcomer with killer-docs, a release cut and test-installed with killer-release, or a demo for the release page
+
+## Running unattended
+
+killer-goal runs this skill overnight, and a user may start it and walk away. Then:
+
+- **The setup answers come with the request.** Don't ask: use what was given and the defaults for the rest, and say so in one line. "Branch and pull request" becomes "commit on the branch killer-goal named", with no pull request.
+- **Calls only the user could make** (a claim you couldn't verify, a tagline you were unsure of) go in the handoff under "Decisions to check".
+- **Nothing public happens unattended:** no `gh repo edit`, topics, website, social card upload, release edit or push. Write each one down with its exact command under "Waiting for your OK".
+- **End with one line:** `killer-repo: <done | partial> · <what changed> · <path to the handoff or the screenshots>`.
 
 ## What makes a repo look AI-made
 

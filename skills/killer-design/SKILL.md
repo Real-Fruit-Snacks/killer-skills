@@ -1,6 +1,6 @@
 ---
 name: killer-design
-description: Design and build striking, memorable websites in hand-written HTML, CSS and a little vanilla JS (landing pages, product and project sites, portfolios, small-business and personal sites), and redesign existing ones, so visitors who load the page think "whoa". Sets an original direction per project or works within an existing brand, designs one wow moment for the first screen, writes real copy, builds a responsive token-based page with a full favicon and app icon set, then screenshots and motion-captures it at phone, tablet and desktop sizes with a bundled Playwright script and fixes what it sees. Use this whenever the user wants to create, design, build, mock up, restyle, redesign, refresh or "make nicer" a website, web page, landing page, homepage or a section of one, even if they only say "make a page for my project" or "this site looks dated", and to design, generate or check a site's favicon or app icons. For critique-only requests where nothing should change, design-critique fits better.
+description: Design and build striking, memorable websites in hand-written HTML, CSS and a little vanilla JS (landing pages, product and project sites, portfolios, small-business and personal sites), and redesign existing ones, so visitors who load the page think "whoa". Sets an original direction per project or works within an existing brand, designs one wow moment for the first screen, writes real copy, builds a responsive token-based page with a full favicon and app icon set, then screenshots and motion-captures it at phone, tablet and desktop sizes with a bundled Playwright script and fixes what it sees. Use this whenever the user wants to create, design, build, mock up, restyle, redesign, refresh or "make nicer" a website, web page, landing page, homepage or a section of one, even if they only say "make a page for my project" or "this site looks dated", and to design, generate or check a site's favicon or app icons. For critique with no changes, design-critique fits better; for a slide deck, killer-slides.
 ---
 
 # Killer design
@@ -194,6 +194,15 @@ Run through the polish checklist at the end of `references/review.md`, then shoo
 - Every stand-in that needs real content (prices, photos, facts), and every assumption you made.
 - The two alternative directions, one line each, as an offer: "If this isn't the feel you want, I could take it toward…".
 - Anything you couldn't verify.
+
+## Running unattended
+
+killer-goal runs this skill overnight, and a user may start it and walk away. Then:
+
+- **Don't stop to ask.** Make the reasonable call, as step 1 says, and list every assumption and stand-in in the handoff under "Decisions to check".
+- **When killer-goal names a branch, commit the site there,** in the project's own commit style.
+- **Nothing outward-facing happens unattended:** no deploys, no pushes, no DNS or hosting changes. Write each one down with its exact command under "Waiting for your OK".
+- **End with one line:** `killer-design: <done | partial> · <what was built, and where> · <path to the final screenshots>`.
 
 ## Working within an existing brand
 
