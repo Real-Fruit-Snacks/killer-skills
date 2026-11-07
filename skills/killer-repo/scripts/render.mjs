@@ -7,7 +7,7 @@
  *
  * Options
  *   --out <dir>      where screenshots and report.json go
- *                    (default: <os tmp>/killer-repo-shots/<label>)
+ *                    (default: <os tmp>/killer-repo-shots/<label>-<hash of the repo or URL>)
  *   --label <name>   filename prefix and folder name, e.g. "before" and "after" (default: the folder name)
  *   --repo <o/r>     repo used to resolve #123 and @user references (default: from gh or the origin remote)
  *   --only <list>    variants, from desktop-light,desktop-dark,phone-light,phone-dark (default: all four)
@@ -31,6 +31,7 @@
  * Desktop approximates the README column on a repo's home page at 1280px; phone is
  * 390px wide. Each variant gets a first-screen shot and a full-page shot.
  */
+import { createHash } from 'node:crypto';
 import fs from 'node:fs/promises';
 import { existsSync, statSync } from 'node:fs';
 import os from 'node:os';
@@ -272,7 +273,11 @@ if (!live) {
   label ||= 'live';
 }
 
-const out = path.resolve(opt.out || path.join(os.tmpdir(), 'killer-repo-shots', label));
+label = label.replace(/[^a-z0-9._-]/gi, '_').slice(0, 40) || 'readme';
+// Keyed by label + a hash of the repo (or URL), so two projects in folders with the same name, or two
+// projects' "before" runs, never share a folder and overwrite each other's screenshots.
+const key = createHash('sha1').update(live ? opt.url : root).digest('hex').slice(0, 6);
+const out = path.resolve(opt.out || path.join(os.tmpdir(), 'killer-repo-shots', `${label}-${key}`));
 await fs.mkdir(out, { recursive: true });
 
 let server, origin;
