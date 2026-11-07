@@ -524,6 +524,22 @@ def sandbox_env(root: Path, network: bool, extra: dict, scratch: str = "scratch"
             "path_first": [here(d) for d in path_first]}
 
 
+def stage_exact(repo: Path, files, env: dict | None = None) -> None:
+    """Stage these files exactly as they are on disk, deletions included.
+
+    git takes a file as unchanged when its size and times match what its index recorded. A file copied
+    with its old modification time (copy_path keeps it) and the same size, a lockfile whose version
+    digits changed, can match by chance and be left out of the commit. So drop the files from the index
+    first: then git hashes every one of them."""
+    files = list(dict.fromkeys(files))
+    present = [f for f in files if (Path(repo) / f).exists() or (Path(repo) / f).is_symlink()]
+    for i in range(0, len(files), 100):
+        git(repo, "--literal-pathspecs", "rm", "-r", "-q", "--cached", "--ignore-unmatch", "--", *files[i:i + 100],
+            env=env)
+    for i in range(0, len(present), 100):
+        git(repo, "--literal-pathspecs", "add", "-A", "--", *present[i:i + 100], env=env)
+
+
 def copy_path(src: Path, dst: Path) -> None:
     if src.is_dir() and not src.is_symlink():
         shutil.copytree(src, dst, symlinks=True, dirs_exist_ok=True)

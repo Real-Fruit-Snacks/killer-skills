@@ -3395,7 +3395,7 @@ def cmd_land(a) -> None:
                     (where / f).unlink()
             files = tested.get("files", []) + tested.get("deleted", [])
             subject, body = commit_message(ws, plan, st, base)
-            kit.git(where, "add", "-A", "--", *files)
+            kit.stage_exact(where, files)   # by content: a copied lockfile can look unchanged to git
             if here:
                 kit.git(where, "commit", "-q", "-m", subject, "-m", body, "--", *files)
             else:

@@ -211,6 +211,36 @@ try:
     check("base=False on a plain folder: the copy isn't made a git repo either",
           (pnb / "repo" / "a.py").is_file() and not (pnb / "repo" / ".git").exists())
 
+    # ---------- stage_exact: a copied file with an old timestamp and the same size still gets staged
+    st = tmp / "stage"
+    st.mkdir()
+    g(st, "init", "-q")
+    for k, val in (("user.name", "T"), ("user.email", "t@example.com"), ("core.checkStat", "minimal"),
+                   ("core.trustctime", "false"), ("core.autocrlf", "false")):
+        g(st, "config", k, val)
+    lock, old_t = st / "deps.lock", 1_600_000_000
+    lock.write_text("omega 1.4.0\n")
+    os.utime(lock, (old_t, old_t))
+    g(st, "add", "-A")
+    g(st, "commit", "-q", "-m", "first")
+    src = tmp / "tried-deps.lock"
+    src.write_text("omega 2.0.1\n")            # same size, new content
+    os.utime(src, (old_t, old_t))              # and the old time, as copy2 keeps it
+    kit.copy_path(src, lock)
+    g(st, "add", "-A")
+    missed = g(st, "diff", "--cached", "--name-only").strip() == ""
+    print(("INFO " if missed else "INFO not ") + "reproduced here: plain git add missed the copied lockfile")
+    kit.stage_exact(st, ["deps.lock"])
+    check("stage_exact: a same-size file copied with its old timestamp is staged by its content",
+          g(st, "diff", "--cached", "--name-only").split() == ["deps.lock"]
+          and g(st, "show", ":deps.lock") == "omega 2.0.1\n")
+    (st / "gone.txt").write_text("x")
+    g(st, "add", "-A")
+    g(st, "commit", "-q", "-m", "two")
+    (st / "gone.txt").unlink()
+    kit.stage_exact(st, ["gone.txt", "deps.lock"])
+    check("stage_exact: a deleted file is staged as deleted", "D\tgone.txt" in g(st, "diff", "--cached", "--name-status"))
+
     # ---------- names, cleaning
     try:
         kit.make_sandbox(cfg, ws, "bad name")
