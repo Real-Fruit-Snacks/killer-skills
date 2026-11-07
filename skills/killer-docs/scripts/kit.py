@@ -485,7 +485,7 @@ def toolchain_homes() -> dict:
     return {k: str(v) for k, v in found.items() if k not in os.environ and v.exists()}
 
 
-def sandbox_env(root: Path, network: bool, extra: dict, scratch: str = "scratch") -> dict:
+def sandbox_env(root: Path, network: bool, extra: dict, scratch: str = "scratch", path_first=()) -> dict:
     home, tmp = root / "home", root / "tmp"
     folders = {
         "HOME": home, "USERPROFILE": home,
@@ -516,8 +516,12 @@ def sandbox_env(root: Path, network: bool, extra: dict, scratch: str = "scratch"
             env["no_proxy"] = LOOPBACK
         env.update({"NODE_USE_ENV_PROXY": "1", "npm_config_offline": "true", "PIP_NO_INDEX": "1",
                     "UV_OFFLINE": "1", "CARGO_NET_OFFLINE": "true", "GOPROXY": "off"})
-    env.update(extra)
-    return {"network": network, "set": env, "drop": DROP_NAMES, "drop_pattern": SECRET_NAMES}
+    # "{sandbox}" in a setting is this sandbox's folder, so each agent gets its own copy of, say, a
+    # trap folder that stands in for the user's real projects folder.
+    here = lambda v: str(v).replace("{sandbox}", str(root))
+    env.update({k: here(v) for k, v in extra.items()})
+    return {"network": network, "set": env, "drop": DROP_NAMES, "drop_pattern": SECRET_NAMES,
+            "path_first": [here(d) for d in path_first]}
 
 
 def copy_path(src: Path, dst: Path) -> None:
@@ -551,7 +555,7 @@ def _commit_base(dst: Path, excludes: list[str]) -> str:
 
 def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = None,
                  network: bool | None = None, env: dict | None = None, *, base: bool = True,
-                 scratch: str = "scratch") -> Path:
+                 scratch: str = "scratch", path_first=()) -> Path:
     """A fresh copy of the project for one agent or one check; returns the sandbox folder.
 
     base=False keeps the project's git state and makes no base commit (see the module docstring)."""
@@ -621,7 +625,9 @@ def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = N
         for d in (scratch, "logs"):
             (root / d).mkdir(exist_ok=True)
         extra = {**cfg.get("env", {}), **(env or {})}
-        save_json(root / "env.json", sandbox_env(root, cfg["network"] if network is None else network, extra, scratch))
+        first = [*cfg.get("path_first", []), *path_first]
+        save_json(root / "env.json", sandbox_env(root, cfg["network"] if network is None else network, extra, scratch,
+                                                 first))
         shutil.copy2(HERE / "run.py", root / "run.py")
     except BaseException:
         drop_sandbox(ws, cfg, name)
@@ -662,7 +668,7 @@ def sandbox_text(root: Path, network: bool, rev: str | None = None, scratch: str
     """What `<script> sandbox` prints, for the lead to paste into a brief."""
     return "\n".join([
         f"  project copy: {root / 'repo'}" + (f" (at {rev})" if rev else ""),
-        f"  run things:   {run_command_line(root)}",
+        f"  run things:   {run_command_line(root)}   (--stdin <file> feeds it input)",
         f"  scratch:      {root / scratch}   (the agent writes its reply to {REPLY} here)",
         f"  network:      {'allowed' if network else OFFLINE_NOTE}",
         "  home, temp and app-data folders are the sandbox's own; tokens and keys are left out",
@@ -742,8 +748,8 @@ def classify(r: dict) -> str:
 
 
 def run_in(box: Path, cmd: list[str], repeat: int = 1, timeout: float = 300, cwd: str | None = None,
-           log: bool = True) -> dict:
-    return runner().run_many(Path(box), cmd, repeat, timeout, cwd, log)
+           log: bool = True, stdin: Path | None = None) -> dict:
+    return runner().run_many(Path(box), cmd, repeat, timeout, cwd, log, stdin=stdin)
 
 
 def run_fresh(cfg: dict, ws: Path, cmd: list[str], *, patch: str | None = None, scratch_from: Path | None = None,

@@ -87,6 +87,36 @@ try:
     check("run.py: `python` runs a real Python, never the Microsoft Store stand-in",
           not kit.failed(res["runs"][0]) and "True" in res["runs"][0]["out"], kit.summary(res))
 
+    # ---------- per-sandbox settings, stand-ins ahead on PATH, input for interactive commands
+    standin = tmp / "standin"
+    standin.mkdir()
+    if os.name == "nt":
+        (standin / "gh.cmd").write_text("@echo stand-in gh refuses %*\r\n@exit /b 3\r\n")
+    else:
+        (standin / "gh").write_text("#!/bin/sh\necho stand-in gh refuses \"$@\"\nexit 3\n")
+        (standin / "gh").chmod(0o755)
+    box2 = kit.make_sandbox(cfg, ws, "agent2", env={"TRAP": "{sandbox}/trap"}, path_first=[str(standin)])
+    out = kit.run_in(box2, [PY, "-c", "import os; print('TRAP=' + os.environ['TRAP'])"])["runs"][0]["out"]
+    check("env: {sandbox} in a setting is each sandbox's own folder",
+          f"TRAP={box2}/trap".replace("\\", "/") in out.replace("\\", "/"), out)
+    r = kit.run_in(box2, ["gh", "auth", "status"])["runs"][0]
+    check("path_first: a stand-in comes before the real tool on PATH",
+          r["code"] == 3 and "stand-in gh refuses auth status" in r["out"], r)
+    answers = tmp / "answers.txt"
+    answers.write_text("yes\n")
+    ask = [PY, "-c", "import sys; print('GOT=' + sys.stdin.read().strip())"]
+    r = kit.run_in(box2, ask, stdin=answers)["runs"][0]
+    check("stdin: a file is fed to the command as its input", "GOT=yes" in r["out"], r)
+    r = kit.run_in(box2, ask)["runs"][0]
+    check("stdin: without one, the command gets no input (and doesn't hang)", "GOT=" in r["out"] and r["code"] == 0, r)
+    r = subprocess.run([PY, str(box2 / "run.py"), "--stdin", str(answers), "--", *ask], capture_output=True, text=True)
+    check("run.py --stdin on the command line", "GOT=yes" in r.stdout, r.stdout + r.stderr)
+    r = subprocess.run([PY, str(box2 / "run.py"), "--stdin", str(tmp / "missing.txt"), "--", *ask],
+                       capture_output=True, text=True)
+    check("run.py --stdin: a missing file is an error, not a silent empty input",
+          r.returncode == 2 and "no file" in r.stderr, r.stdout + r.stderr)
+    kit.drop_sandbox(ws, cfg, "agent2")
+
     # ---------- an agent changes things
     (repo / "crlf.txt").write_bytes(b"one\r\nTWO\r\nthree\r\n")
     (repo / "latin.dat").write_bytes("caf\xe9 au lait\n".encode("latin-1"))

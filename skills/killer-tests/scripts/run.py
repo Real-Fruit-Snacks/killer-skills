@@ -8,6 +8,7 @@ and app-data folders, no credentials, and (unless the sandbox allows it) no netw
   python run.py -- <command> [args...]
   python run.py --repeat 20 -- <command> [args...]   how often does it fail?
   python run.py --cwd sub/dir --timeout 120 -- <command> [args...]
+  python run.py --stdin answers.txt -- <command> [args...]   feed it input
 
 The command's exit code is the verdict: 0 means it behaved, anything else means it
 failed. Lines starting EXPECTED: or OBSERVED: are repeated in the summary. Every
@@ -49,6 +50,10 @@ def build_env(root: Path = HERE) -> dict:
             for name in [n for n in env if n.upper() == k.upper()]:
                 del env[name]
         env[k] = v
+    first = [str(d) for d in spec.get("path_first", [])]
+    if first:   # stand-ins (a gh that refuses, say) ahead of the real tools
+        key = next((n for n in env if n.upper() == "PATH"), "PATH")
+        env[key] = os.pathsep.join(first + ([env[key]] if env.get(key) else []))
     return env
 
 
@@ -76,26 +81,36 @@ def kill_tree(p: subprocess.Popen) -> None:
         pass
 
 
-def run_once(cmd: list[str], cwd: Path, env: dict, timeout: float) -> dict:
+def run_once(cmd: list[str], cwd: Path, env: dict, timeout: float, stdin: Path | None = None) -> dict:
     extra = {"start_new_session": True} if os.name != "nt" else \
             {"creationflags": getattr(subprocess, "CREATE_NEW_PROCESS_GROUP", 0)}
     start = time.monotonic()
     try:
-        p = subprocess.Popen(resolve(cmd, env), cwd=str(cwd), env=env, stdin=subprocess.DEVNULL,
-                             stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **extra)
+        feed = open(stdin, "rb") if stdin else None
     except OSError as e:
-        return {"code": 127, "out": f"could not start {cmd[0]}: {e}\n", "secs": 0.0, "timed_out": False}
+        return {"code": 127, "out": f"could not open the --stdin file {stdin}: {e}\n", "secs": 0.0,
+                "timed_out": False}
     try:
-        out, _ = p.communicate(timeout=timeout)
-        timed_out = False
-    except subprocess.TimeoutExpired:
-        kill_tree(p)
         try:
-            out, _ = p.communicate(timeout=10)
+            p = subprocess.Popen(resolve(cmd, env), cwd=str(cwd), env=env,
+                                 stdin=feed if feed else subprocess.DEVNULL,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, **extra)
+        except OSError as e:
+            return {"code": 127, "out": f"could not start {cmd[0]}: {e}\n", "secs": 0.0, "timed_out": False}
+        try:
+            out, _ = p.communicate(timeout=timeout)
+            timed_out = False
         except subprocess.TimeoutExpired:
-            out = b""
-        timed_out = True
-    text = (out or b"").decode("utf-8", errors="replace").replace("\r\n", "\n")
+            kill_tree(p)
+            try:
+                out, _ = p.communicate(timeout=10)
+            except subprocess.TimeoutExpired:
+                out = b""
+            timed_out = True
+    finally:
+        if feed:
+            feed.close()
+    text =(out or b"").decode("utf-8", errors="replace").replace("\r\n", "\n")
     return {"code": None if timed_out else p.returncode, "out": text,
             "secs": round(time.monotonic() - start, 2), "timed_out": timed_out}
 
@@ -109,7 +124,7 @@ def marked(out: str) -> list[str]:
 
 
 def run_many(root: Path, cmd: list[str], repeat: int = 1, timeout: float = 300,
-             cwd: str | None = None, log: bool = True) -> dict:
+             cwd: str | None = None, log: bool = True, stdin: Path | None = None) -> dict:
     """Run cmd `repeat` times in the sandbox at root; returns the runs and where their logs are."""
     env = build_env(root)
     where = root / "repo" / cwd if cwd else root / "repo"
@@ -121,7 +136,7 @@ def run_many(root: Path, cmd: list[str], repeat: int = 1, timeout: float = 300,
                  if (m := re.match(r"(\d+)-", f.name))] or [0])
     runs = []
     for k in range(1, repeat + 1):
-        r = run_once(cmd, where, env, timeout)
+        r = run_once(cmd, where, env, timeout, stdin)
         if log:
             path = logs / f"{n:03d}-{k}.log"
             path.write_text(f"$ {' '.join(cmd)}\n# cwd {where}\n# exit {r['code']}"
@@ -165,6 +180,7 @@ def main(argv=None) -> None:
     p.add_argument("--repeat", type=int, default=1, help="run it this many times and count failures")
     p.add_argument("--timeout", type=float, default=300, help="seconds per run before it's killed (default 300)")
     p.add_argument("--cwd", help="folder inside the project copy to run from")
+    p.add_argument("--stdin", help="a file to feed the command as its input (default: no input)")
     p.add_argument("cmd", nargs=argparse.REMAINDER, help="-- then the command")
     a = p.parse_args(argv)
     cmd = a.cmd[1:] if a.cmd[:1] == ["--"] else a.cmd
@@ -172,7 +188,10 @@ def main(argv=None) -> None:
         p.error("give the command after --")
     if a.repeat < 1:
         p.error("--repeat must be 1 or more")
-    res = run_many(HERE, cmd, a.repeat, a.timeout, a.cwd)
+    feed = Path(a.stdin).resolve() if a.stdin else None
+    if feed and not feed.is_file():
+        p.error(f'no file {feed} for --stdin')
+    res = run_many(HERE, cmd, a.repeat, a.timeout, a.cwd, stdin=feed)
     print(summary(res))
     sys.exit(1 if any(failed(r) for r in res["runs"]) else 0)
 
