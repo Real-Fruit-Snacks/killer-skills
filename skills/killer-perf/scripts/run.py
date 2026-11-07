@@ -91,6 +91,8 @@ def run_once(cmd: list[str], cwd: Path, env: dict, timeout: float, stdin: Path |
         return {"code": 127, "out": f"could not open the --stdin file {stdin}: {e}\n", "secs": 0.0,
                 "timed_out": False}
     try:
+        if os.name != "nt":   # the host's PWD could name the real project
+            env = {**env, "PWD": str(cwd)}
         try:
             p = subprocess.Popen(resolve(cmd, env), cwd=str(cwd), env=env,
                                  stdin=feed if feed else subprocess.DEVNULL,

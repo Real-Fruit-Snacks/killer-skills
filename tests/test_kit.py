@@ -241,6 +241,44 @@ try:
     kit.stage_exact(st, ["gone.txt", "deps.lock"])
     check("stage_exact: a deleted file is staged as deleted", "D\tgone.txt" in g(st, "diff", "--cached", "--name-status"))
 
+    # ---------- the real project's files are never shared with a sandbox, and the helpers 1.4.0 added
+    objs = [p for p in (proj / ".git" / "objects").rglob("*") if p.is_file() and len(p.parent.name) == 2]
+    modes = {p: os.stat(p).st_mode for p in objs}
+    sb = kit.make_sandbox(cfg, ws, "shared-objects")
+    alt = sb / "repo" / ".git" / "objects" / "info" / "alternates"
+    check("sandbox: reads the project's objects in place (alternates), with no hardlinked copy",
+          alt.is_file() and not any(os.stat(p).st_nlink > 1 for p in objs), alt)
+    kit.drop_sandbox(ws, cfg, "shared-objects")
+    check("sandbox: deleting it leaves every object file of the real project as it was",
+          all(p.is_file() and os.stat(p).st_mode == m for p, m in modes.items()) and not sb.exists())
+    blob = kit.git(proj, "hash-object", "--stdin", data="a\nb\n").strip()
+    want = subprocess.run(["git", "hash-object", "--stdin"], input=b"a\nb\n", capture_output=True).stdout.decode().strip()
+    check("git(data=): the input reaches git byte for byte, LF and all", blob == want, (blob, want))
+    res = kit.run_fresh(cfg, ws, [PY, "-c", "print('fresh')"], base=False, scratch="repro", keep=True)
+    fb = Path(res["sandbox"])
+    check("run_fresh(base=False, scratch=...): passes both through to the sandbox",
+          not (fb / "base.txt").exists() and (fb / "repro").is_dir() and "fresh" in res["runs"][0]["out"], res)
+    kit.drop_sandbox(ws, cfg, fb.name)
+    rb = kit.make_sandbox(cfg, ws, "rebase")
+    (rb / "repo" / "step1.py").write_text("x = 1\n")
+    new_base = kit.rebase_box(rb)
+    (rb / "repo" / "step2.py").write_text("y = 2\n")
+    check("rebase_box: what's there now becomes the base, so the diff shows only what came after",
+          kit.box_base(rb) == new_base and kit.changed_files(kit.box_diff(rb)) == ["step2.py"], kit.box_diff(rb))
+    if os.name != "nt":
+        res = kit.run_in(rb, [PY, "-c", "import os; print('PWD=' + os.environ.get('PWD', '-'))"])
+        pwd = next(ln for ln in res["runs"][0]["out"].splitlines() if ln.startswith("PWD="))[4:]
+        check("run.py: PWD is the copy's folder, not the host's", Path(pwd).resolve() == (rb / "repo").resolve(), pwd)
+        locked_dir = tmp / "ro-tree"
+        (locked_dir / "inner").mkdir(parents=True)
+        (locked_dir / "inner" / "f.txt").write_text("x")
+        os.chmod(locked_dir / "inner", 0o500)
+        kit.rmtree(locked_dir)
+        check("rmtree: deletes a tree with a read-only folder in it (POSIX)", not locked_dir.exists())
+    else:
+        print("SKIP run.py PWD and rmtree's read-only folder: POSIX only")
+    kit.drop_sandbox(ws, cfg, "rebase")
+
     # ---------- names, cleaning
     try:
         kit.make_sandbox(cfg, ws, "bad name")

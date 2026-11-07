@@ -25,6 +25,10 @@ on:
       - "tests/test_upgrade.py"
       - "tests/test_goal.py"
       - "tests/test_slides.py"
+      - "tests/test_svg.py"
+      - "tests/test_refactor.py"
+      - "tests/test_ci.py"
+      - "tests/test_issues.py"
       - "tools/shared/**"
       - ".github/workflows/packs.yml"
   workflow_call:

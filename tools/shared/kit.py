@@ -191,13 +191,18 @@ def locked(ws: Path, timeout: float = 300):
                 time.sleep(0.02)
 
 
+def _text(b: bytes) -> str:
+    return b.decode("utf-8", "replace").replace("\r\n", "\n").replace("\r", "\n")
+
+
 def git(cwd: Path, *args: str, check: bool = True, env: dict | None = None, data: str | None = None) -> str:
-    r = subprocess.run(["git", "-C", str(cwd), "-c", "core.longpaths=true", *args], input=data,
-                       capture_output=True, text=True, encoding="utf-8", errors="replace",
-                       env=env)
+    # The input goes as bytes: in text mode Windows would turn each \n of it into \r\n.
+    r = subprocess.run(["git", "-C", str(cwd), "-c", "core.longpaths=true", *args],
+                       input=None if data is None else data.encode("utf-8"), capture_output=True, env=env)
+    out, err = _text(r.stdout), _text(r.stderr)
     if check and r.returncode:
-        fail(f"git {' '.join(args)}: {r.stderr.strip() or r.stdout.strip()}")
-    return r.stdout if r.returncode == 0 else ""
+        fail(f"git {' '.join(args)}: {err.strip() or out.strip()}")
+    return out if r.returncode == 0 else ""
 
 
 def git_ok(cwd: Path, *args: str) -> bool:
@@ -209,11 +214,21 @@ def split0(s: str) -> list[str]:
 
 
 def rmtree(path: Path) -> None:
-    def retry(func, p, _exc):   # git's object files are read-only, which stops Windows deleting them
+    def retry(func, p, _exc):
+        # Windows won't delete a read-only file (git's objects are read-only), so make the file
+        # writable; POSIX won't delete from a read-only folder, so make the folder writable.
         try:
-            os.chmod(p, stat.S_IWRITE)
-            func(p)
-        except OSError:
+            if os.name == "nt":
+                os.chmod(p, stat.S_IWRITE)
+            else:
+                os.chmod(os.path.dirname(p) or ".", stat.S_IRWXU)
+                if os.path.isdir(p) and not os.path.islink(p):
+                    os.chmod(p, stat.S_IRWXU)
+            if os.path.isdir(p) and not os.path.islink(p):
+                shutil.rmtree(p, ignore_errors=True)   # it couldn't be listed before; now it can
+            else:
+                os.unlink(p)
+        except Exception:
             pass
     path = Path(path)
     if not path.exists() and not path.is_symlink():
@@ -604,8 +619,10 @@ def make_sandbox(cfg: dict, ws: Path, name: str, include=(), rev: str | None = N
     try:
         if cfg["git"] and has_head(src):
             sha = git(src, "rev-parse", "--verify", (rev or "HEAD") + "^{commit}").strip()
-            r = subprocess.run(["git", "-c", "core.longpaths=true", "clone", "-q", "--no-checkout", str(src), str(dst)],
-                               capture_output=True, text=True)
+            # --shared: the copy reads the project's objects in place (git's alternates) instead of
+            # hardlinking them, so deleting the sandbox can never change a file of the real project's.
+            r = subprocess.run(["git", "-c", "core.longpaths=true", "clone", "-q", "--shared", "--no-checkout",
+                                str(src), str(dst)], capture_output=True, text=True)
             if r.returncode:
                 fail(f"git clone into the sandbox failed: {r.stderr.strip()}")
             git(dst, "remote", "remove", "origin")   # nothing in the sandbox can push to the real repo
@@ -712,6 +729,16 @@ def keep_scratch(box: Path, dst: Path, scratch: str = "scratch") -> None:
     shutil.copytree(Path(box) / scratch, dst, ignore=shutil.ignore_patterns("__pycache__", REPLY, "*.pyc"))
 
 
+def rebase_box(box: Path) -> str:
+    """Commit everything in the sandbox's repo/ as its new base, so box_diff shows only what comes after."""
+    repo = Path(box) / "repo"
+    git(repo, *RAW, "add", "-A")
+    git(repo, *BASE_IDENTITY, "commit", "-q", "--no-verify", "--allow-empty", "-m", "sandbox base")
+    sha = git(repo, "rev-parse", "HEAD").strip()
+    (Path(box) / "base.txt").write_text(sha + "\n", encoding="utf-8")
+    return sha
+
+
 def box_base(box: Path) -> str:
     p = Path(box) / "base.txt"
     if not p.is_file():
@@ -785,20 +812,21 @@ def run_in(box: Path, cmd: list[str], repeat: int = 1, timeout: float = 300, cwd
 
 def run_fresh(cfg: dict, ws: Path, cmd: list[str], *, patch: str | None = None, scratch_from: Path | None = None,
               repeat: int = 1, timeout: float = 300, cwd: str | None = None, rev: str | None = None,
-              hint: str = "fresh", keep: bool = False, setup: list[list[str]] | None = None) -> dict:
+              hint: str = "fresh", keep: bool = False, setup: list[list[str]] | None = None,
+              base: bool = True, scratch: str = "scratch") -> dict:
     """Run cmd in a brand-new sandbox (with a patch applied and a scratch folder copied in), then delete it.
 
     Returns run.py's result, plus "patch_error" when the patch didn't apply (then nothing ran) and
     "setup" with the results of any setup commands run first (a failed one stops the run)."""
     name = f"{re.sub(r'[^A-Za-z0-9._-]+', '-', hint)[:24]}-{secrets.token_hex(3)}"
-    root = make_sandbox(cfg, ws, name, rev=rev)
+    root = make_sandbox(cfg, ws, name, rev=rev, base=base, scratch=scratch)
     try:
         if patch:
             ok, msg = apply_patch(root / "repo", patch)
             if not ok:
                 return {"cmd": cmd, "cwd": str(root / "repo"), "runs": [], "patch_error": msg}
         if scratch_from and Path(scratch_from).is_dir():
-            shutil.copytree(scratch_from, root / "scratch", dirs_exist_ok=True)
+            shutil.copytree(scratch_from, root / scratch, dirs_exist_ok=True)
         done = []
         for step in setup or []:
             s = run_in(root, step, 1, timeout, cwd, log=False)

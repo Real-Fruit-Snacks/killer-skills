@@ -11,9 +11,9 @@ kind  = "terminal"
 title = "sh"
 lines = [
   "$ sh install.sh",
-  "ok installed killer-bugs",
-  "ok installed killer-goal",
-  "ok installed killer-release",
-  "ok installed killer-tests",
-  "11 skills in ~/.claude/skills",
+  "ok installed killer-ci",
+  "ok installed killer-issues",
+  "ok installed killer-refactor",
+  "ok installed killer-svg",
+  "15 skills in ~/.claude/skills",
 ]

@@ -385,9 +385,14 @@ try:
               and "200" in srv[1]["output"], srv[:2])
         check("run-blocks: a block that never finishes times out, with the hint", srv[2]["status"] == "timed-out"
               and srv[2]["secs"] < 30 and any("interactive or a server" in n for n in srv[2]["notes"]), srv[2])
-        with socket.socket() as s:
-            s.settimeout(1)
-            check("run-blocks: nothing is left listening", s.connect_ex(("127.0.0.1", PORT)) != 0)
+        def listening():
+            with socket.socket() as s:
+                s.settimeout(1)
+                return s.connect_ex(("127.0.0.1", PORT)) == 0
+        deadline = time.monotonic() + 5   # a stopped server can take a moment to let go of its port
+        while listening() and time.monotonic() < deadline:
+            time.sleep(0.2)
+        check("run-blocks: nothing is left listening", not listening())
     check("run-blocks: the real project is untouched", not (proj / "state.txt").exists()
           and g(proj, "status", "--porcelain").strip() == "", g(proj, "status", "--porcelain"))
     out2, _ = docs("guard", "-w", ws)

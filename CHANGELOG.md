@@ -2,6 +2,40 @@
 
 Each release publishes every skill on its own (`<skill>.zip`, `<skill>.tar.gz`), all of them together (`killer-skills.zip`, `killer-skills.tar.gz`), the packs (`killer-skills-fonts.zip` and `.tar.gz`, and for Windows `killer-skills-runtime-windows-x64.zip`, `killer-skills-node-windows-x64.zip` and `killer-skills-python-windows-x64.zip`), both installers and `SHA256SUMS.txt`. The asset names don't change, so `https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/<file>` always fetches the newest.
 
+## 1.4.0 (unreleased)
+
+Four new skills, for fifteen in all: vector graphics checked in every browser engine and by a blind viewer, refactors that prove the behaviour didn't change, tests that fail only on CI made to fail here, and issue triage where a script decides what reproduces.
+
+### killer-svg
+
+- New: killer-svg designs and hand-writes logos, icons and icon sets, diagrams, illustrations, banners, cards and animated SVG, inventing a look from the subject or following a brand. `svg.mjs check` proves each one: a strict XML lint, renders at every size on light, dark and a checkerboard through `<img>`, a pixel comparison between Chromium, Firefox and WebKit, contrast on each background, GitHub's `<img>` rules, and frames with reduced motion on.
+- A blind viewer sees only the renders, labelled by letter, and says what each graphic is and the smallest size it can recognise it at. A matcher's verdict counts only if the script finds its quote in the viewer's words. A graphic that doesn't read at its smallest size fails the round.
+- `minify` writes a smaller file only when Chromium renders it identically at every size. `export` writes transparent PNGs. An engine that isn't installed is reported not checked, never passed, and the command that installs it waits for your OK.
+
+### killer-refactor
+
+- New: killer-refactor cuts a refactor into small steps and records what the code does first: the tests run three times (tests that flip are left out, and listed), recorded runs of real commands with their output, exit code and the files they write, and the public interface with every signature.
+- A step counts only when `refactor.py verify` passes it in a fresh copy: the tests pass, every recorded run is identical, the interface is the same or changed exactly as the plan allows, and every pin passes. Then a blind challenger's probes must give the same output on the original and the changed code; a probe that finds a difference becomes a recorded run.
+- Barely tested code gets pinning tests first, and a pin counts only when it passes three times on the original and fails on a fault planted in the code it pins. Accepted steps land one commit each on a local `killer-refactor/<date>` branch, checked again as a whole, with before and after numbers for lines, long functions, nesting, duplication and complexity.
+
+### killer-ci
+
+- New: killer-ci recreates CI runners' conditions in fresh sandboxed copies: 8.3 short or symlinked temp paths, spaces and non-ASCII letters, long paths, time zones, locales, CRLF and LF checkouts, shallow clones, CI variables, hash seeds, test order, busy helper processes, a read-only checkout, the umask and the network. `ci.py bisect` narrows a failing set to the smallest one that still breaks the test, and proves it twice with and twice without.
+- `ci.py hunt` runs the suite many times and counts each test's passes and failures, with recorded hash seeds so a flaky failure can be replayed.
+- A fix counts only when it passes K runs in a row under the conditions, where K is the smallest number the old failure rate would pass by luck less than 1% of the time, still passes without them, and nothing else breaks. Fixes that add skips, retries, longer sleeps or timeouts, or branch on CI, are refused unless you decide otherwise. `ci-read` reads GitHub Actions, GitLab, Azure and CircleCI configs, and `logs` reads failing runs read-only through `gh`.
+
+### killer-issues
+
+- New: killer-issues reads a repository's issues with read-only `gh` (every call logged and listed in the report) and sends blind reproducer agents, each in a sandboxed copy, to make each bug report happen.
+- `issues.py` reruns every reproduction itself, at HEAD and at the tag for the version the reporter used, and its runs decide: reproduced, fixed since that version, or can't reproduce. A duplicate counts only when both reproductions print the same `OBSERVED:` line; "not a bug" needs a quote from the code or docs the script finds at HEAD.
+- Replies are drafted with the checked facts filled in, and `check-drafts` refuses one that claims more than the proof, credits an AI, shows a local path or uses a label the repo doesn't have. Every comment, label and close is an exact `gh` command waiting for your OK. Issue text reaches agents only inside a fenced block, as data, and lines that try to instruct the reader are flagged.
+
+### Across the suite
+
+- Sandboxes read the project's git objects in place (`git clone --shared`) instead of hardlinking them. Before, deleting a sandbox on Windows made the hardlinked object files writable, and so changed the real project's copies too.
+- Fixed in the shared kit: deleting a sandbox with a read-only folder in it on Linux or macOS made the wrong thing writable and could stop partway; text sent to git (commit messages, `update-ref --stdin`) reached it with CRLF line endings on Windows; on Linux and macOS, commands in a sandbox inherited the host's `PWD`, which could name the real project. `run_fresh` takes `base=False` and `scratch=`, and `rebase_box` makes a sandbox's current state its new base.
+- The installers bring the browser packs with killer-svg and the Python pack with killer-refactor, killer-ci and killer-issues; CI runs the four new skills' tests on all three systems, and the Windows pack test runs killer-svg's browser checks and the new Python skills' tests on the packed Python.
+
 ## 1.3.0 (2026-11-07)
 
 Eight new skills, for eleven in all, each ending with a check a script runs: a bug hunt that reports only the bugs it can make happen, tests kept only if they catch a planted fault, docs that a blind newcomer has to get through, speedups that have to beat the measured noise, upgrades proven by the project's own tests, releases that have to install from scratch, decks measured slide by slide, and killer-goal, which takes a goal in your words and runs the rest overnight.

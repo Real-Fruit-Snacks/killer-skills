@@ -18,14 +18,15 @@
 # Beside the skills it installs the packs they use, each into its own folder in ~/.cache,
 # only when it's missing or out of date:
 #   killer-skills         Windows: Playwright, its Chromium and Mermaid, for killer-design,
-#                         killer-repo and killer-slides (not when killer-design already has
-#                         Playwright and Chromium)
+#                         killer-repo, killer-slides and killer-svg (not when killer-design
+#                         already has Playwright and Chromium)
 #   killer-skills-fonts   the web fonts killer-design suggests, to self-host
-#   killer-skills-node    Windows: Node.js, for killer-design, killer-repo and killer-slides, if
-#                         there's no Node 20+
+#   killer-skills-node    Windows: Node.js, for killer-design, killer-repo, killer-slides and
+#                         killer-svg, if there's no Node 20+
 #   killer-skills-python  Windows: Python, for the skills whose scripts are Python (killer-council,
 #                         killer-bugs, killer-tests, killer-docs, killer-perf, killer-release,
-#                         killer-upgrade and killer-goal), if there's no Python 3.10+
+#                         killer-upgrade, killer-goal, killer-refactor, killer-ci and
+#                         killer-issues), if there's no Python 3.10+
 #
 #   $env:KILLER_SKILLS_VERSION = 'v1.0.0'   a release tag instead of the latest
 #   $env:KILLER_SKILLS_DIR = 'path'         install somewhere other than ~/.claude/skills
@@ -232,8 +233,8 @@ function Install-KillerSkills {
     }
 
     $onWindows = ($PSVersionTable.PSVersion.Major -lt 6) -or $IsWindows
-    $browser = @($names | Where-Object { @('killer-design', 'killer-repo', 'killer-slides') -contains $_ }).Count -gt 0   # the skills that drive Chromium
-    $pythonSkills = @('killer-council', 'killer-bugs', 'killer-tests', 'killer-docs', 'killer-perf', 'killer-release', 'killer-upgrade', 'killer-goal')
+    $browser = @($names | Where-Object { @('killer-design', 'killer-repo', 'killer-slides', 'killer-svg') -contains $_ }).Count -gt 0   # the skills that drive Chromium
+    $pythonSkills = @('killer-council', 'killer-bugs', 'killer-tests', 'killer-docs', 'killer-perf', 'killer-release', 'killer-upgrade', 'killer-goal', 'killer-refactor', 'killer-ci', 'killer-issues')
     $council = @($names | Where-Object { $pythonSkills -contains $_ }).Count -gt 0   # the skills that run Python
     if ($mode -ne 'skip') {
       if ($browser -and $onWindows -and $sums.ContainsKey($packs.runtime.Asset)) {

@@ -34,7 +34,8 @@ DESIGN = ROOT / "skills" / "killer-design" / "scripts"
 PYTHON_TESTS = [("killer-council's", "test_council.py"), ("the shared kit's", "test_kit.py"),
                 ("killer-bugs'", "test_bugs.py"), ("killer-tests'", "test_tests.py"), ("killer-docs'", "test_docs.py"),
                 ("killer-perf's", "test_perf.py"), ("killer-release's", "test_release.py"),
-                ("killer-upgrade's", "test_upgrade.py"), ("killer-goal's", "test_goal.py")]
+                ("killer-upgrade's", "test_upgrade.py"), ("killer-goal's", "test_goal.py"),
+                ("killer-refactor's", "test_refactor.py"), ("killer-ci's", "test_ci.py"), ("killer-issues'", "test_issues.py")]
 REPO = ROOT / "skills" / "killer-repo" / "scripts"
 failures = []
 
@@ -165,6 +166,12 @@ code{font:600 1rem "IBM Plex Mono",monospace}</style></head>
     r = subprocess.run([sys.executable, "-I", str(ROOT / "tests" / "test_slides.py")], env=slides_env,
                        capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
     check("killer-slides' tests pass on the runtime, browser checks included",
+          r.returncode == 0 and "ALL PASSED" in r.stdout and "SKIP browser checks" not in r.stdout,
+          (r.stdout + r.stderr)[-3000:])
+    # killer-svg the same way; the runtime carries Chromium only, so its engine comparison says SKIP
+    r = subprocess.run([sys.executable, "-I", str(ROOT / "tests" / "test_svg.py")], env=slides_env,
+                       capture_output=True, text=True, encoding="utf-8", errors="replace", timeout=900)
+    check("killer-svg's tests pass on the runtime, browser checks included",
           r.returncode == 0 and "ALL PASSED" in r.stdout and "SKIP browser checks" not in r.stdout,
           (r.stdout + r.stderr)[-3000:])
 

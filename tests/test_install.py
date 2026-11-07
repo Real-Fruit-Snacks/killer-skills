@@ -248,7 +248,7 @@ try:
             continue  # the rest builds on a good first install
 
         # A skill that uses the font pack and the runtime, so reinstalling it shows they aren't fetched again.
-        target = next((s for s in reversed(skills) if s in ("killer-design", "killer-repo", "killer-slides")), skills[-1])
+        target = next((s for s in reversed(skills) if s in ("killer-design", "killer-repo", "killer-slides", "killer-svg")), skills[-1])
         (dest / target / "stale.txt").write_text("left over from an old version")
         (dest / skills[0] / "keep.txt").write_text("another skill's file")
         before_hits = Quiet.hits[f"/good/{RUNTIME_ZIP}"], Quiet.hits[f"/good/{fonts_file}"]
@@ -301,10 +301,12 @@ try:
               r.returncode == 0 and not ({"killer-skills", "killer-skills-node", FONTS} & set(packs_in(c)))
               and "runtime" not in r.stdout and "font pack" not in r.stdout, r.stdout + r.stderr)
 
-        if "killer-slides" in skills:
-            d, c, e = fresh("slides-fonts")
-            r = run(["killer-slides"], e)
-            check(f"{label}: killer-slides gets the font pack, as killer-design does",
+        for browser_skill in ("killer-slides", "killer-svg"):
+            if browser_skill not in skills:
+                continue
+            d, c, e = fresh(browser_skill.split("-")[1] + "-fonts")
+            r = run([browser_skill], e)
+            check(f"{label}: {browser_skill} gets the font pack, as killer-design does",
                   r.returncode == 0 and FONTS in packs_in(c) and "installed the font pack" in r.stdout, r.stdout + r.stderr)
 
         d, c, e = fresh("skip", KILLER_SKILLS_RUNTIME="skip")
@@ -324,7 +326,7 @@ try:
         check(f"{label}: KILLER_SKILLS_RUNTIME=all installs Python even when it's here",
               r.returncode == 0 and "installed Python: 0.0.2" in r.stdout and (c / "killer-skills-python" / "python.exe").exists(), r.stdout + r.stderr)
         for py_skill in ("killer-bugs", "killer-tests", "killer-docs", "killer-perf", "killer-release",
-                         "killer-upgrade", "killer-goal"):
+                         "killer-upgrade", "killer-goal", "killer-refactor", "killer-ci", "killer-issues"):
             if py_skill not in skills:
                 continue
             d, c, e = fresh(py_skill.split("-")[1], KILLER_SKILLS_RUNTIME="all")
@@ -332,10 +334,12 @@ try:
             check(f"{label}: {py_skill} gets Python like killer-council, and no browser packs",
                   r.returncode == 0 and "installed Python: 0.0.2" in r.stdout
                   and set(packs_in(c)) == {"killer-skills-python"}, r.stdout + r.stderr)
-        if "killer-slides" in skills:
-            d, c, e = fresh("slides", KILLER_SKILLS_RUNTIME="all")
-            r = run(["killer-slides"], e)
-            check(f"{label}: killer-slides gets the browser packs like killer-design, and no Python",
+        for browser_skill in ("killer-slides", "killer-svg"):
+            if browser_skill not in skills:
+                continue
+            d, c, e = fresh(browser_skill.split("-")[1], KILLER_SKILLS_RUNTIME="all")
+            r = run([browser_skill], e)
+            check(f"{label}: {browser_skill} gets the browser packs like killer-design, and no Python",
                   r.returncode == 0 and {"killer-skills", "killer-skills-node", FONTS} <= set(packs_in(c))
                   and "killer-skills-python" not in packs_in(c), r.stdout + r.stderr)
 

@@ -71,6 +71,18 @@ jobs:
       - name: killer-slides
         run: python -I tests/test_slides.py
 
+      - name: killer-svg
+        run: python -I tests/test_svg.py
+
+      - name: killer-refactor
+        run: python -I tests/test_refactor.py
+
+      - name: killer-ci
+        run: python -I tests/test_ci.py
+
+      - name: killer-issues
+        run: python -I tests/test_issues.py
+
       - name: Packager
         run: python -I tests/test_package.py
 

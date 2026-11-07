@@ -14,7 +14,8 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 
-PYTHON_KIT = ["killer-bugs", "killer-tests", "killer-docs", "killer-perf", "killer-release", "killer-upgrade", "killer-goal"]
+PYTHON_KIT = ["killer-bugs", "killer-tests", "killer-docs", "killer-perf", "killer-release", "killer-upgrade", "killer-goal",
+              "killer-refactor", "killer-ci", "killer-issues"]
 
 SHARED = {
     "tools/shared/kit.py": PYTHON_KIT,

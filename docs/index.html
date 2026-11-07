@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>killer-skills: Claude Code skills that won't hand you the first draft</title>
-<meta name="description" content="Eleven Claude Code skills, each its own download, that do a whole job and check it: websites, decks, repo pages, blind reviews, bug hunts, tests, docs, speed, upgrades and releases, with killer-goal to run them overnight toward one goal.">
+<meta name="description" content="Fifteen Claude Code skills, each its own download, that do a whole job and check it: websites, decks, graphics, repo pages, blind reviews, bug hunts, issue triage, tests, refactors, docs, speed, CI, upgrades and releases, with killer-goal to run them overnight toward one goal.">
 <link rel="canonical" href="https://real-fruit-snacks.github.io/killer-skills/">
 <meta property="og:title" content="killer-skills">
 <meta property="og:description" content="Claude Code skills that won't hand you the first draft. A real council run: round 1 scored 10, round 2 scored 87.">
@@ -25,7 +25,7 @@
 </head>
 <body>
 
-<p class="slug"><span>killer-skills</span><span>Claude Code skills</span><span>MIT</span><span class="slug-wide">Real-Fruit-Snacks</span><span class="slug-wide">proof 3 of 3</span></p>
+<p class="slug"><span>killer-skills</span><span>Claude Code skills</span><span>MIT</span><span class="slug-wide">Real-Fruit-Snacks</span><span class="slug-wide">proof 4 of 4</span></p>
 
 <header class="mast">
   <a class="wordmark" href="./">killer-skills</a>
@@ -40,10 +40,10 @@
   <section class="hero" aria-labelledby="title">
     <div class="hero-copy">
       <h1 id="title">Claude Code skills that won’t hand you the first draft.</h1>
-      <p class="stand">Eleven skills, each for a whole job: a website, a deck, a repo page, a blind review, a bug hunt, tests, docs, speed, upgrades, a release. Each one checks its result with a script, fixes what it finds, and checks again. killer-goal runs them overnight toward one goal.</p>
+      <p class="stand">Fifteen skills, each for a whole job: a website, a deck, a logo, a repo page, a blind review, a bug hunt, the issue tracker, tests, a refactor, docs, speed, CI, upgrades, a release. Each one checks its result with a script, fixes what it finds, and checks again. killer-goal runs them overnight toward one goal.</p>
 
       <div class="ticket" id="install">
-        <p class="ticket-head">Install all eleven into <code>~/.claude/skills</code></p>
+        <p class="ticket-head">Install all fifteen into <code>~/.claude/skills</code></p>
         <div class="cmd">
           <span class="cmd-label">PowerShell</span>
           <code class="cmd-line">irm https:/<wbr>/<wbr>raw.githubusercontent.com/<wbr>Real-Fruit-Snacks/<wbr>killer-skills/<wbr>main/<wbr>install.ps1 | iex</code>
@@ -148,7 +148,7 @@
           <img src="assets/readme-light.webp" width="640" height="498" alt="This repo's README rendered in light mode: the title, the cover and both install lines" loading="lazy" decoding="async">
           <img src="assets/readme-dark.webp" width="640" height="498" alt="The same README rendered in dark mode" loading="lazy" decoding="async">
         </div>
-        <figcaption>This repo’s README through <code>render.mjs</code>: cover-dark.svg 836x390 (88 KB), 0 badges, 2 code blocks, 151 words on the first screen.</figcaption>
+        <figcaption>This repo’s README through <code>render.mjs</code>: cover-dark.svg 836x390 (86 KB), 0 badges, 2 code blocks, 179 words on the first screen.</figcaption>
       </figure>
     </article>
 
@@ -179,7 +179,7 @@
     </article>
 
     <div class="set-head">
-      <h3 id="set-title">Eight more, each with a check to pass</h3>
+      <h3 id="set-title">Twelve more, each with a check to pass</h3>
       <p>These are newer, and none has a real run printed here yet. So instead of evidence, each one names the check its script makes before the job counts as done.</p>
     </div>
     <ol class="set" aria-labelledby="set-title">
@@ -207,6 +207,18 @@
           <button class="copy" type="button" data-copy="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-slides">Copy its PowerShell line</button>
         </div>
       </li>
+      <li class="job" aria-labelledby="k-svg">
+        <h4 id="k-svg"><span class="pre">killer-</span><span class="name">svg</span></h4>
+        <dl>
+          <dt>Does</dt><dd>Designs and hand-writes a logo, icon set, diagram or illustration as SVG, from the subject or within your brand.</dd>
+          <dt>Done when</dt><dd>It renders at every size on light and dark, matches pixel for pixel in Chromium, Firefox and WebKit, and a blind viewer who sees only the renders says what the brief says it should read as.</dd>
+          <dt>Needs</dt><dd>Node.js 20 or later and Playwright, as for killer-design; Firefox and WebKit when they’re installed</dd>
+        </dl>
+        <div class="get">
+          <a class="zip" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-svg.zip">killer-svg.zip</a>
+          <button class="copy" type="button" data-copy="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-svg">Copy its PowerShell line</button>
+        </div>
+      </li>
       <li class="job" aria-labelledby="k-bugs">
         <h4 id="k-bugs"><span class="pre">killer-</span><span class="name">bugs</span></h4>
         <dl>
@@ -219,6 +231,18 @@
           <button class="copy" type="button" data-copy="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-bugs">Copy its PowerShell line</button>
         </div>
       </li>
+      <li class="job" aria-labelledby="k-issues">
+        <h4 id="k-issues"><span class="pre">killer-</span><span class="name">issues</span></h4>
+        <dl>
+          <dt>Does</dt><dd>Works through a repository’s GitHub issues with read-only <code>gh</code>, and drafts a reply and labels for each.</dd>
+          <dt>Done when</dt><dd>Each verdict comes from the script rerunning the reproduction at HEAD and at the reporter’s version: reproduced, fixed since, or can’t reproduce. Every comment, label and close waits for your OK.</dd>
+          <dt>Needs</dt><dd>Python 3.10 or later, and <code>gh</code> logged in</dd>
+        </dl>
+        <div class="get">
+          <a class="zip" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-issues.zip">killer-issues.zip</a>
+          <button class="copy" type="button" data-copy="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-issues">Copy its PowerShell line</button>
+        </div>
+      </li>
       <li class="job" aria-labelledby="k-tests">
         <h4 id="k-tests"><span class="pre">killer-</span><span class="name">tests</span></h4>
         <dl>
@@ -229,6 +253,18 @@
         <div class="get">
           <a class="zip" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-tests.zip">killer-tests.zip</a>
           <button class="copy" type="button" data-copy="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-tests">Copy its PowerShell line</button>
+        </div>
+      </li>
+      <li class="job" aria-labelledby="k-refactor">
+        <h4 id="k-refactor"><span class="pre">killer-</span><span class="name">refactor</span></h4>
+        <dl>
+          <dt>Does</dt><dd>Restructures code in small steps without changing what it does: splits, renames, dead code, deprecated APIs.</dd>
+          <dt>Done when</dt><dd>Each step passes the tests, every recorded run gives the same output, the interface is unchanged except as planned, and a blind challenger’s probes find no difference between old and new.</dd>
+          <dt>Needs</dt><dd>Python 3.10 or later</dd>
+        </dl>
+        <div class="get">
+          <a class="zip" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-refactor.zip">killer-refactor.zip</a>
+          <button class="copy" type="button" data-copy="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-refactor">Copy its PowerShell line</button>
         </div>
       </li>
       <li class="job" aria-labelledby="k-docs">
@@ -253,6 +289,18 @@
         <div class="get">
           <a class="zip" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-perf.zip">killer-perf.zip</a>
           <button class="copy" type="button" data-copy="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-perf">Copy its PowerShell line</button>
+        </div>
+      </li>
+      <li class="job" aria-labelledby="k-ci">
+        <h4 id="k-ci"><span class="pre">killer-</span><span class="name">ci</span></h4>
+        <dl>
+          <dt>Does</dt><dd>Recreates CI runners’ conditions in sandboxed copies until a CI-only or flaky failure happens here, then fixes the cause.</dd>
+          <dt>Done when</dt><dd>The fix passes enough runs in a row under those conditions to rule out luck, and passes without them. Skips, retries and longer sleeps don’t count.</dd>
+          <dt>Needs</dt><dd>Python 3.10 or later; <code>gh</code> to read CI’s logs</dd>
+        </dl>
+        <div class="get">
+          <a class="zip" href="https://github.com/Real-Fruit-Snacks/killer-skills/releases/latest/download/killer-ci.zip">killer-ci.zip</a>
+          <button class="copy" type="button" data-copy="&amp; ([scriptblock]::Create((irm https://raw.githubusercontent.com/Real-Fruit-Snacks/killer-skills/main/install.ps1))) killer-ci">Copy its PowerShell line</button>
         </div>
       </li>
       <li class="job" aria-labelledby="k-upgrade">
@@ -288,9 +336,9 @@
     <div>
       <h2>Tested on</h2>
       <ul>
-        <li>Windows 11 · Claude Code 2.1.316 · Node.js 24.20.0 · Python 3.14.2: killer-design, killer-repo and killer-council each run on a real project. killer-slides made a real deck with a real audience round, killer-release smoke-installed this repo, and killer-bugs ran partway on three projects. The rest are tested by their scripts’ own tests</li>
+        <li>Windows 11 · Claude Code 2.1.316 · Node.js 24.20.0 · Python 3.14.2: killer-design, killer-repo and killer-council each run on a real project. killer-slides made a real deck with a real audience round, killer-release smoke-installed this repo, and killer-bugs ran partway on three projects. killer-svg ran a real blind viewer round on test graphics. The rest are tested by their scripts’ own tests</li>
         <li>Ubuntu 24.04, Windows Server 2025 and macOS 26 in CI on every push: both installers, downloading and from a folder, the packager, the shared sandbox kit and every skill’s scripts</li>
-        <li>Windows Server 2025 in CI, with the network cut off: every Chromium script on the packed Node.js, a page in the pack’s fonts, killer-slides’ browser checks, and every Python skill’s tests on the packed Python</li>
+        <li>Windows Server 2025 in CI, with the network cut off: every Chromium script on the packed Node.js, a page in the pack’s fonts, killer-slides’ and killer-svg’s browser checks, and every Python skill’s tests on the packed Python</li>
         <li><em>Not</em> tested: the skills themselves on macOS or Linux, or uploaded to claude.ai</li>
       </ul>
     </div>
@@ -302,6 +350,7 @@
         <li>killer-council’s reviewers work in your folder, not a sandbox. <code>council.py verify</code> catches a change after each round; nothing prevents one.</li>
         <li>killer-goal keeps going overnight with a Stop hook in <code>~/.claude/settings.json</code>, added only if you say yes. It does nothing unless a goal is running.</li>
         <li>killer-upgrade has run npm and pip for real. Its other package managers are checked against saved output only.</li>
+        <li>killer-svg compares Firefox and WebKit only where Playwright has them installed; the Windows runtime brings Chromium alone.</li>
         <li>A council that mixes providers needs T3 Code. Elsewhere it offers a mix of Claude models.</li>
         <li>GitHub has no API for a repo’s social preview, so killer-repo makes the card and tells you where to upload it.</li>
         <li class="more"><a href="https://github.com/Real-Fruit-Snacks/killer-skills#known-issues">The rest are in the README</a></li>

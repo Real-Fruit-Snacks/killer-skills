@@ -24,6 +24,10 @@ Agent counts are rough, for the budget. `step done` takes the count from a summa
 | killer-repo | `~/.claude/killer-repo/<project>/<date>-repo-page/` | yes, from `handoff.mjs finish` | in prose |
 | killer-design | `~/.claude/killer-design/<project>/<date>-site/` | yes, from `handoff.mjs finish` | in prose |
 | killer-council | `~/.claude/council-runs/<date>-<slug>/` | yes, from `council.py summary` | in prose, and only when the answers ask it to commit |
+| killer-svg | `~/.claude/killer-svg/<project>/<date>-<slug>/` | yes | `svg.mjs init --branch` or `land --branch` |
+| killer-refactor | `~/.claude/killer-refactor/<project>/<date>-<slug>/` | yes | `refactor.py init --branch` or `land --branch` |
+| killer-ci | `~/.claude/killer-ci/<project>/<date>-<slug>/` | yes | `ci.py land --branch` |
+| killer-issues | `~/.claude/killer-issues/<project>/<date>-<slug>/` | yes | none: it changes nothing in the project |
 
 `<project>` is the project folder's name and a short hash. Record the step with `step done --summary <its run folder>`. If a run ended without its summary.json, use `--headline "<its one-line summary>" --report <its report.md>`, and record its "Decisions to check" and "Waiting for your OK" yourself with `goal.py decide` and `goal.py wait`, since nothing else copies them into the ledger. `goal.py status` looks in these places for a running step's folder.
 
@@ -148,3 +152,52 @@ Agent counts are rough, for the budget. `step done` takes the count from a summa
 - **Setup, unattended:** Threshold *85* · Members *4* (light: *3*; thorough: *5*) · Models *Same model for all* · Your seat *No, just run it* · Rounds *5* (light: *3*) · Extras *Holdout juror* only: the approval step and pauses need someone there. Name the files under review in the answers, and add "commit the final version on the goal branch": it commits only when asked. If it didn't, commit the work as direct work.
 - **Agents, standard:** 5 to 21: four seats a round for up to five rounds, plus the holdout. A pass in round 2 is 9.
 - **Leaves:** the improved work. `report.md` and `summary.json` in its run folder; the summary counts the seats it really sent, and a pass the holdout disagrees with is partial.
+
+## killer-svg: a logo, icons or another graphic
+
+- **For:** a logo or mark, an icon set, a diagram, an illustration, a banner or card, as hand-written SVG checked in every browser engine and read back by a blind viewer.
+- **Wrong tool:** a site's favicon and app icons while building the site (killer-design makes those, and can take a mark killer-svg made); data charts; photos or raster art.
+- **Setup, unattended:**
+  - Kind: what the goal names: *A logo or mark*, *An icon or icon set*, *A diagram*, *An illustration or banner*.
+  - Look: *Follow our brand* when the project has a brand guide or a killer-design `DESIGN.md`, else *Invent a look from the subject*.
+  - Used: where the goal puts it: *A website or app*, *A GitHub README*, *An app or favicon icon*.
+  - Check: *Yes*. After: *Commit them on a new local branch*, which unattended goes on the goal branch (`land --branch <goal branch>`).
+  - Put what the graphic must read as in the answers ("a ship's wheel and a terminal prompt: tools for sailing"); without it, killer-svg writes the reads itself and records them as a decision.
+- **Agents, standard:** 2 to 6: a viewer and a matcher a round, at most three rounds.
+- **Leaves:** the SVG files (and any PNG exports) committed on the goal branch. `report.md` and `summary.json`. Needs Node 20+ and Playwright; Firefox and WebKit only if they're installed, otherwise reported not checked, and installing them is a waiting item.
+
+## killer-refactor: structure changed, behaviour proven the same
+
+- **For:** splitting a module, extracting functions, renames, removing dead code, simplifying, replacing a deprecated API, when nothing the code does may change.
+- **Wrong tool:** new behaviour or a bug fix (direct work, or killer-bugs); speed (killer-perf); formatting only (the project's formatter).
+- **Setup, unattended:**
+  - Scope: the folder or files the goal names, else *This branch's changes*.
+  - Interface: *No: everything public stays the same*, unless the goal asks for renames or moves (then *Only the renames and moves I asked for*, listed in the answers).
+  - Depth: the run's depth (*Standard*, *Quick* for light, *Thorough*). Pins: *Yes*.
+  - After: *Commit them on a new local branch, one per step*, which unattended goes on the goal branch (`refactor.py land -w <its run> --branch <goal branch>`).
+  - Put the refactor itself in the answers as numbered steps; it won't invent steps the goal didn't ask for.
+- **Agents, standard:** about 2 a step (a refactorer and a challenger) plus one to three pin writers.
+- **Leaves:** one commit per accepted step, and the pinning tests in their own commit if kept. `report.md` and `summary.json` with the before and after metrics. Its state: `refactor.py status -w <its run>`.
+
+## killer-ci: CI-only and flaky failures made to fail here, then fixed
+
+- **For:** tests that pass here and fail on CI, flaky tests, or making a suite robust to the conditions CI runners differ in (paths, time zones, line endings, shallow clones, order, load).
+- **Wrong tool:** a test that fails everywhere (direct work or killer-bugs); a slow CI pipeline; editing the workflows themselves without a failing test.
+- **Setup, unattended:**
+  - Problem: *A CI failure I can see on GitHub* when the goal names one and the network is allowed, *Flaky tests* when the goal says "sometimes", else *Nothing yet: try every condition*.
+  - Network: *Yes, read-only with gh* only if the goal's setup allowed the network; otherwise *No network*.
+  - Runs: the run's depth (*Standard*, *Quick* for light, *Thorough*).
+  - After: *Commit them on a new local branch*, which unattended goes on the goal branch (`ci.py land -w <its run> <ids> --branch <goal branch>`).
+- **Agents, standard:** one diagnoser per failure it reproduces, usually 1 to 5.
+- **Leaves:** one commit per proven fix. `report.md` and `summary.json`. "Push the branch and watch CI" is always a waiting item: the real CI is the last check, and it's outward-facing.
+
+## killer-issues: the issue tracker triaged, with proof
+
+- **For:** going through a repository's GitHub issues: what reproduces now, what was fixed since the reporter's version, what's a duplicate, what needs info, with a drafted reply for each.
+- **Wrong tool:** fixing the bugs it finds (killer-bugs, as a later step); one bug the user already knows about.
+- **Setup, unattended:**
+  - Issues: *The 30 newest open ones*, or what the goal names. Network: *No: sandboxes stay offline*.
+  - Depth: the run's depth (*Standard*, *Quick* for light, *Thorough*). After: *Drafted replies and labels, waiting for your OK*.
+  - It needs `gh` logged in, for reading. Without it, record the step blocked.
+- **Agents, standard:** one reproducer per bug report (small ones batched), at most 30, plus an answerer for questions.
+- **Leaves:** nothing in the project and no branch. The drafts, `report.md` and `summary.json` in its run folder; every comment, label and close is a waiting item with its exact `gh` command. To fix what it reproduced, plan killer-bugs after it, scoped to those issues' reproductions.

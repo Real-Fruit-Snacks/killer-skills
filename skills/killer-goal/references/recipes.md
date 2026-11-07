@@ -114,3 +114,61 @@ Run `checks run` before `go`: C1 must fail. A test that passes before the featur
 2. Optionally killer-council on the deck, for a talk that matters, asked to commit the final version on the goal branch.
 
 **Not:** no invented numbers, quotes or results on a slide. A stand-in that needs a real figure is listed for the user.
+
+## "CI is red" or "the tests are flaky"
+
+**Checks.**
+
+- `C1` command: the test that fails on CI (or flips) passes 20 runs in a row here under the conditions that broke it: a check script that sets them (the temp path, `TZ`, line endings) and runs that test. Write it first, and see it fail.
+- `C2` command: the whole test suite passes.
+- `C3` judge: the fix removes the cause; it doesn't skip the test, retry it, sleep longer or branch on CI.
+
+**Plan.**
+
+1. killer-ci: the failure the user named (or flaky tests), commit each proven fix.
+
+**Not:** no pushes to see whether CI goes green; that's a waiting item for the user.
+
+## "Clean up <module>" or "refactor <thing>"
+
+**Checks.**
+
+- `C1` command: the whole test suite passes.
+- `C2` command: what the user asked for is so: a check script that looks at the structure ("`orders.py` is gone and `orders/` has `pricing.py` and `tax.py`", "no function in `x/` is over 60 lines").
+- `C3` judge: the public interface is the same, except the renames and moves the user asked for.
+
+**Plan.**
+
+1. killer-refactor: the steps from the user's words, the interface frozen except what they asked to change, keep the pins.
+2. killer-tests on this branch's changes, when the code was barely tested before.
+
+**Not:** no behaviour changes, no bug fixes mixed in (a bug found on the way is a decision, then its own step after).
+
+## "Go through the issues"
+
+**Checks.**
+
+- `C1` judge: every open issue in scope has a verdict backed by the proof its kind needs, and a drafted reply.
+- `C2` command (when the user wants fixes too): a check script that runs each reproduced issue's reproduction and passes when none shows.
+
+**Plan.**
+
+1. killer-issues: the issues the user named, drafts waiting for the OK.
+2. When the user wants fixes: killer-bugs on the issues killer-issues reproduced, fix, each with a test.
+
+**Not:** nothing posted, labelled or closed; every reply waits for the user.
+
+## "A logo" or "icons for X"
+
+**Checks.**
+
+- `C1` command: the files exist where the goal puts them, and each is valid SVG with a viewBox and no external references (a small check script).
+- `C2` judge: it reads as what the user asked for, at the smallest size it'll be used.
+
+**Plan.**
+
+1. killer-svg: the kind, the look (the brand if there is one), where it's used, the reads from the user's words.
+2. When it goes into a site or README: killer-design or killer-repo to put it in place (the favicon set, the README header).
+
+**Not:** no raster art or photo work.
+
