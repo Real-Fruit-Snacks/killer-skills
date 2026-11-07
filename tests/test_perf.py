@@ -1,12 +1,13 @@
 """Scenario tests for killer-perf's script (perf.py). Run: python -I tests/test_perf.py
 
-The timed checks use effects far bigger than a busy machine's noise. The slow version sleeps
-12 x 30 ms between readiness checks and dedupes with list membership; the fast one sleeps 1 ms
-and uses a set. The script prints the time its work took as a METRIC line, so the decision
-leaves out Python's start-up, which is what other load on a machine disturbs most; the work
-itself is about 20 times faster. Wall-time measurement is checked separately, without any
-assertion about how noisy this machine is. The statistics are checked against values worked
-out by hand.
+The slow version sleeps 12 x 30 ms between readiness checks and dedupes with list membership;
+the fast one sleeps 1 ms and uses a set. The script's METRIC line is the sleep time its work
+asks for, counted rather than clocked, so the noise test, the speedup and the change that does
+nothing are decided by the code alone: every fresh copy, interleaved run, interval and test
+is real, but no check depends on how busy the machine is. A shared CI runner is busy: macOS
+ones stretch a 30 ms sleep past 100 ms, unevenly. Wall-time measurement is checked
+separately, without any assertion about how noisy the machine is. The statistics are checked
+against values worked out by hand.
 """
 import importlib.util
 import json
@@ -93,6 +94,9 @@ NAMES = (
     "    return done\n")
 SLOW = HEAD + (
     "import time\nfrom pathlib import Path\nfrom names import dedupe, wait_ready\n\n"
+    "slept = [0.0]\nreal_sleep = time.sleep\n\n\n"
+    "def counted_sleep(s):\n    slept[0] += s\n    real_sleep(s)\n\n\n"
+    "time.sleep = counted_sleep\n"
     "if not Path('built.txt').exists():\n    print('not built')\n    sys.exit(3)\n"
     "log = os.environ.get('PERF_ORDER_LOG')\n"
     "if log:\n    with open(log, 'a') as f:\n        f.write(os.getcwd() + '\\n')\n"
@@ -102,7 +106,7 @@ SLOW = HEAD + (
     "print(f'{len(unique)} unique names, first {unique[0]}, last {unique[-1]}')\n"
     "print(f'ready after {checks} checks')\n"
     "print(f'done in {(time.perf_counter() - t0) * 1000:.1f} ms')\n"
-    "print(f'METRIC: work={(time.perf_counter() - t0) * 1000:.3f} ms')\n")
+    "print(f'METRIC: work={slept[0] * 1000:.3f} ms')\n")
 TEST = HEAD + (
     "flag = os.environ.get('PERF_FAIL_FLAG')\n"
     "if flag and os.path.exists(flag):\n    sys.exit('failing on purpose: the flag file is there')\n"
@@ -219,15 +223,9 @@ try:
     # ---------- the A/A noise test, and the interleaving
     ORDER_LOG.unlink(missing_ok=True)
     out, code = perf("bench", "noise", "-w", ws, "main", ok=(0, 1))
-    if code == 1 and "can't be trusted" in out:
-        # A busy machine: do what the skill tells a lead to do, once, with more runs.
-        print("note: the machine is busy; running the noise test again with more runs, as the skill would")
-        REPEAT = 20
-        ORDER_LOG.unlink(missing_ok=True)
-        out, code = perf("bench", "noise", "-w", ws, "main", "--repeat", REPEAT, ok=(0, 1))
     noise = state(ws)["benchmarks"]["main"].get("noise") or {}
-    check("bench noise: the unchanged project against itself gives a small, clean band",
-          code == 0 and noise.get("state") == "clean" and noise["band"] < 0.10 and "Noise band ±" in out, out)
+    check("bench noise: the unchanged project against itself gives a clean band (none, on a counted metric)",
+          code == 0 and noise.get("state") == "clean" and noise["band"] == 0 and "Noise band ±0.0%" in out, out)
     seen = {}
     for ln in ORDER_LOG.read_text().splitlines():
         if ln and ln not in seen:
