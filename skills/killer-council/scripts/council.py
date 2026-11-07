@@ -11,6 +11,9 @@ Commands:
   tally     score a round: median, vetoes, decision; rebuilds ledger.md
   holdout   compare the holdout juror's score with the council's
   reveal    print the threshold (for the final report)
+  decide    record a call the user should check (unattended runs)
+  wait      record an outward action left for the user's OK, with its command
+  summary   write summary.json from the tallies, for whoever reads the run next
 
 The threshold is stored sealed (base64) in config.json so nobody reads it by
 accident, the leader included. It guards against slips; it is not security.
@@ -20,12 +23,14 @@ from __future__ import annotations
 
 import argparse
 import base64
+import datetime as dt
 import glob
 import json
 import re
 import secrets
 import shutil
 import statistics
+import subprocess
 import sys
 from pathlib import Path
 
@@ -130,6 +135,25 @@ def round_dirs(ws: Path) -> list[tuple[int, Path]]:
 
 def fmt(x) -> str:
     return f"{x:g}" if isinstance(x, float) else str(x)
+
+
+def git_out(cwd: Path, *args: str) -> str | None:
+    try:
+        r = subprocess.run(["git", "-C", str(cwd), *args], capture_output=True, text=True,
+                           encoding="utf-8", errors="replace")
+    except OSError:
+        return None
+    return r.stdout.strip() if r.returncode == 0 else None
+
+
+def git_start(near: Path) -> dict | None:
+    """The repository the work sits in and its HEAD now, so summary can list the commits made since."""
+    d = near if near.is_dir() else near.parent
+    while not d.is_dir() and d != d.parent:
+        d = d.parent
+    top = git_out(d, "rev-parse", "--show-toplevel")
+    head = git_out(d, "rev-parse", "--verify", "-q", "HEAD^{commit}") if top else None
+    return {"repo": top, "head": head} if top and head else None
 
 
 def read_score(path: Path) -> tuple[dict | None, str | None]:
@@ -237,6 +261,7 @@ def cmd_init(a) -> None:
         "overfit_gap": a.overfit_gap,
         "human": a.human,
         "files": [],
+        "git": git_start(Path(expand(a.files)[0]).resolve() if a.files else Path.cwd()),
     }
     save_json(ws / "config.json", cfg)
     if a.files:
@@ -622,6 +647,98 @@ def cmd_reveal(a) -> None:
         print(f"Threshold: {t}")
 
 
+def stamp() -> str:
+    return dt.datetime.now().isoformat(timespec="seconds")
+
+
+def read_list(path: Path) -> list:
+    if not path.is_file():
+        return []
+    data = json.loads(path.read_text(encoding="utf-8"))
+    return data if isinstance(data, list) else []
+
+
+def cmd_decide(a) -> None:
+    ws = workspace(a)
+    load_config(ws)
+    items = read_list(ws / "decisions.json") + [{"text": a.text, "at": stamp()}]
+    save_json(ws / "decisions.json", items)
+    print(f"Recorded decision {len(items)}: {a.text}")
+
+
+def cmd_wait(a) -> None:
+    ws = workspace(a)
+    load_config(ws)
+    items = read_list(ws / "waiting.json") + [{"text": a.text, "command": a.command or "", "at": stamp()}]
+    save_json(ws / "waiting.json", items)
+    print(f"Recorded as waiting for the user's OK: {a.text}" + (f" ({a.command})" if a.command else ""))
+
+
+def agents_used(ws: Path) -> int:
+    """Seats scored by an agent across every round, plus the holdout. The user's own seat isn't one."""
+    n = 0
+    for _, rd in round_dirs(ws):
+        for f in (rd / "scores").glob("*.json"):
+            try:
+                d = json.loads(f.read_text(encoding="utf-8"))
+            except ValueError:
+                continue
+            if isinstance(d, dict) and str(d.get("source", "agent")).lower() != "human":
+                n += 1
+    return n + (ws / "holdout" / "score.json").is_file()
+
+
+def cmd_summary(a) -> None:
+    ws = workspace(a)
+    cfg = load_config(ws)
+    tallies = [json.loads((rd / "tally.json").read_text(encoding="utf-8"))
+               for _, rd in round_dirs(ws) if (rd / "tally.json").is_file()]
+    if not tallies:
+        fail("no round has been tallied yet; run tally first")
+    report = Path(a.report).expanduser().resolve() if a.report else ws / "report.md"
+    if not report.is_file():
+        fail(f"no report at {report}; write it first (section 6), then run summary")
+    last, t = tallies[-1], unseal(cfg["sealed"])
+    n, decision = last["round"], last["decision"]
+    best, best_med = last["best_round"], last["best_median"]
+    bar = f"{t}" + (f" (sealed, drawn from {cfg['range'][0]}-{cfg['range'][1]})" if cfg["mode"] == "range" else "")
+    if decision == "PASS":
+        headline = f"passed in round {n}: median {fmt(last['median'])} against {bar}"
+    else:
+        why = {"STOP_CAP": "at the round limit", "STOP_PLATEAU": "when the scores stopped rising"}.get(
+            decision, f"after round {n}, with rounds left")
+        headline = f"stopped {why}: best median {fmt(best_med)} in round {best}, against {bar}"
+    status = "done" if decision == "PASS" else "partial"
+    hp = ws / "holdout" / "result.json"
+    holdout = json.loads(hp.read_text(encoding="utf-8")) if hp.is_file() else None
+    if holdout:
+        headline += f"; holdout {holdout['holdout_score']}"
+        if holdout.get("overfit_warning"):
+            headline += ", well under the council (overfitting warning)"
+            status = "partial"
+        elif not holdout.get("holdout_passed"):
+            headline += ", below the threshold"
+            status = "partial"
+    branch, commits = None, []
+    start = cfg.get("git") or {}
+    if start.get("repo") and start.get("head"):
+        log = git_out(Path(start["repo"]), "log", "--format=%h %s", "-n", "100", f"{start['head']}..HEAD") or ""
+        commits = [ln for ln in log.splitlines() if ln.strip()]
+        branch = (git_out(Path(start["repo"]), "symbolic-ref", "-q", "--short", "HEAD") or None) if commits else None
+    decisions = read_list(ws / "decisions.json")
+    waiting = read_list(ws / "waiting.json")
+    save_json(ws / "summary.json", {
+        "skill": "killer-council", "status": status, "headline": headline, "report": str(report),
+        "branch": branch, "commits": commits,
+        "decisions": [d["text"] for d in decisions],
+        "waiting": [w["text"] + (f": {w['command']}" if w.get("command") else "") for w in waiting],
+        "numbers": {"rounds": n, "median": last["median"], "best_round": best, "best_median": best_med,
+                    "threshold": t, "holdout": holdout["holdout_score"] if holdout else None,
+                    "agents": agents_used(ws)}})
+    print(f"Wrote {ws / 'summary.json'}")
+    print(f"killer-council: {status} · {headline} · {report}")
+
+
 # ---------------------------------------------------------------- CLI
 
 def main(argv=None) -> None:
@@ -679,6 +796,17 @@ def main(argv=None) -> None:
                    help="the round whose version the holdout judged")
 
     cmd("reveal", cmd_reveal, "Print the threshold.")
+
+    s = cmd("decide", cmd_decide, "Record a call the user should check; summary.json lists it.")
+    s.add_argument("text")
+
+    s = cmd("wait", cmd_wait, "Record an outward action (a push, an upload) left for the user's OK.")
+    s.add_argument("text")
+    s.add_argument("--command", help="the exact command that would do it")
+
+    s = cmd("summary", cmd_summary,
+            "Write summary.json from the tallies, the holdout and the recorded calls. Run it after report.md.")
+    s.add_argument("--report", help="the report, if it isn't <run>/report.md")
 
     a = p.parse_args(argv)
     a.func(a)

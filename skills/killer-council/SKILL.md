@@ -1,13 +1,13 @@
 ---
 name: killer-council
-description: "Run a blind scoring council on a piece of work (code, a doc, a plan, a design, a prompt, another skill). You lead the council: ask the user a few setup questions, write the review questions, send fresh member agents to score the work from 1 to 100 with reasons, then fix what they found and reconvene until the score passes a threshold the members never see. The user can take a seat on the council. Use whenever the user says council, convene, panel or jury, asks to have several agents score, grade or pressure-test something, or wants work improved until it reaches a score or quality bar, even if they never say 'council'. For a single review with no fix loop, code-review or design-critique fits better."
+description: "Run a blind scoring council on a piece of work (code, a doc, a plan, a design, a prompt, another skill). You lead the council: ask the user a few setup questions, write the review questions, send fresh member agents to score the work from 1 to 100 with reasons, then fix what they found and reconvene until the score passes a threshold the members never see. The user can take a seat on the council. Use whenever the user says council, convene, panel or jury, asks to have several agents score, grade or pressure-test something, or wants work improved until it reaches a score or quality bar, even if they never say 'council'. For a single review with no fix loop, code-review or design-critique fits better; to see a bigger goal through, killer-goal."
 ---
 
 # Killer Council
 
 You are the **leader**. The council is a set of fresh member agents. Each reviews the work from one lens and returns a score from 1 to 100 with reasons. You write the questions, tally the scores, fix the work and reconvene, until the council passes it or the loop stops making progress. You never score the work yourself: you're the one changing it, so you can't judge it blind.
 
-`scripts/council.py` in this skill's folder does the bookkeeping: sealing the threshold, snapshots, leak checks and the tally. Run it with `py` on Windows (or `python` if there's no `py`) and `python3` elsewhere. If none of those works on Windows, use `~/.cache/killer-skills-python/python.exe`: the Windows installer puts Python there when it's missing. `council.py <command> --help` lists the options.
+`scripts/council.py` in this skill's folder does the bookkeeping: sealing the threshold, snapshots, leak checks, the tally and the run's `summary.json`. Run it with `py` on Windows (or `python` if there's no `py`) and `python3` elsewhere. If none of those works on Windows, use `~/.cache/killer-skills-python/python.exe`: the Windows installer puts Python there when it's missing. `council.py <command> --help` lists the options.
 
 ## Why blindness matters, and how to keep it
 
@@ -150,6 +150,16 @@ For a sealed threshold, run `council.py reveal -w <run>` and put the number in t
 - Their score counts like any member's, in the median and for vetoes. If they pass, the round goes ahead without them.
 - **Blind mode:** until the end, all the chat shows between rounds is "Fixes applied. Here's your next brief." followed by the brief. No scores, no list of fixes, no hints about passing. Tell them once, at the start, that tool calls (edits, score files) are still visible in the UI if they expand them, so they should leave those collapsed. If pauses are on, ask "Continue?" with no numbers.
 - The user knows the threshold (unless it's sealed) and remembers earlier versions, so their seat isn't blind the way the AI seats are. That's expected; explain it if they ask.
+
+## Running unattended
+
+killer-goal runs this skill overnight, and a user may start it and walk away. Then:
+
+- **The setup answers come with the request.** Don't ask: use what was given and the defaults for the rest, and say so in one line. Nobody takes a seat, and there are no approval steps or pauses.
+- **Open questions don't stop the run.** Make the call, record it with `council.py decide -w <run> "<text>"`, and list it under "Decisions to check" in the report, as section 5 says.
+- **When killer-goal names a branch, commit the final version there,** in one commit with a plain message about the work and nothing about the council. killer-goal checks only what's committed.
+- **Nothing outward-facing happens unattended.** Record anything that would need it with `council.py wait -w <run> "<text>" --command "<cmd>"`.
+- **Finish with the report, then `council.py summary -w <run>`.** It writes `summary.json` beside `report.md` for killer-goal, from the tallies and the holdout rather than from memory, and prints the one line to end with: `killer-council: <done | partial> · <headline> · <path to report.md>`. A pass the holdout disagrees with is partial.
 
 ## When things go wrong
 

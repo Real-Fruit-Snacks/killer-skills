@@ -47,7 +47,8 @@ try:
                  "--files", readme, "--max-rounds", 6)
     check("init prints fixed threshold", "Threshold 85" in out, out)
     cfg = json.loads((ws / "config.json").read_text())
-    check("config does not hold the threshold in plain text", "85" not in json.dumps(cfg), json.dumps(cfg))
+    plain = {k: v for k, v in cfg.items() if k not in ("files", "git")}   # paths and hashes can hold "85" by chance
+    check("config does not hold the threshold in plain text", "85" not in json.dumps(plain), json.dumps(cfg))
 
     run("snapshot", "-w", ws, "-r", 1)
     scores(ws, 1, [("a", 70, "high"), ("b", 75, "medium"), ("c", 80, "high"), ("d", 60, "high")])
@@ -109,6 +110,24 @@ try:
     (ws / "holdout" / "score.json").write_text(json.dumps({"seat": "holdout", "score": 84, "confidence": "high"}))
     out, _ = run("holdout", "-w", ws, "-r", 4)
     check("holdout 84 vs 87 is consistent", "Consistent" in out and "passes" not in out.split("does not")[0] or "does not pass" in out, out)
+
+    # ---------- summary.json for killer-goal
+    out, code = run("summary", "-w", ws, ok=(2,))
+    check("summary: refuses before report.md is written", "write it first" in out, out)
+    (ws / "report.md").write_text("# Council report\n", encoding="utf-8")
+    run("decide", "-w", ws, "Kept the shorter intro both seats argued over")
+    run("wait", "-w", ws, "Push the README", "--command", "git push")
+    out, _ = run("summary", "-w", ws)
+    summ = json.loads((ws / "summary.json").read_text(encoding="utf-8"))
+    check("summary: a pass the holdout scored under the threshold is partial, and says why",
+          summ["skill"] == "killer-council" and summ["status"] == "partial"
+          and summ["headline"] == "passed in round 4: median 87 against 85; holdout 84, below the threshold", summ)
+    check("summary: counts every scored seat and the holdout as agents, with the decisions and waiting items",
+          summ["numbers"]["agents"] == 17 and summ["numbers"]["rounds"] == 4 and summ["numbers"]["threshold"] == 85
+          and summ["decisions"] == ["Kept the shorter intro both seats argued over"]
+          and summ["waiting"] == ["Push the README: git push"] and summ["commits"] == [] and summ["branch"] is None, summ)
+    check("summary: prints the one line to end with",
+          out.strip().splitlines()[-1] == f"killer-council: partial · {summ['headline']} · {ws / 'report.md'}", out)
 
     # ---------- lint
     briefs = ws / "round-5" / "briefs"
@@ -219,6 +238,38 @@ try:
     (ws5 / "round-2" / "scores" / "x.json").write_text(json.dumps({"score": 101}))
     out, code = run("tally", "-w", ws5, "-r", 2, ok=(2,))
     check("invalid score rejected", "1 to 100" in out, out)
+
+    # ---------- summary: a stop, and the commits made on the branch killer-goal named
+    out, _ = run("summary", "-w", ws3, ok=(2,))
+    (ws3 / "report.md").write_text("# Council report\n", encoding="utf-8")
+    out, _ = run("summary", "-w", ws3)
+    s3 = json.loads((ws3 / "summary.json").read_text(encoding="utf-8"))
+    check("summary: a plateau is partial, with the best round",
+          s3["status"] == "partial" and s3["headline"].startswith("stopped when the scores stopped rising: best median 82 in round 3"), s3)
+    repo = tmp / "repo"
+    repo.mkdir()
+    def git(*args):
+        return subprocess.run(["git", "-C", str(repo), "-c", "user.name=T", "-c", "user.email=t@example.com", *args],
+                              capture_output=True, text=True, check=True).stdout
+    git("init", "-q", "-b", "killer-goal/x")
+    (repo / "plan.md").write_text("draft\n", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-q", "-m", "draft")
+    ws7 = tmp / "run-git"
+    run("init", "-w", ws7, "--threshold", 80, "--files", repo / "plan.md")
+    run("snapshot", "-w", ws7, "-r", 1)
+    scores(ws7, 1, [("a", 85, "high"), ("b", 88, "high"), ("you", 90, "high")])
+    sp = ws7 / "round-1" / "scores" / "you.json"
+    sp.write_text(json.dumps({**json.loads(sp.read_text()), "source": "human"}), encoding="utf-8")
+    run("tally", "-w", ws7, "-r", 1)
+    (repo / "plan.md").write_text("final\n", encoding="utf-8")
+    git("commit", "-q", "-am", "Plan: tighten the rollout steps")
+    (ws7 / "report.md").write_text("# Council report\n", encoding="utf-8")
+    out, _ = run("summary", "-w", ws7)
+    s7 = json.loads((ws7 / "summary.json").read_text(encoding="utf-8"))
+    check("summary: lists the commits made since init and the branch, and doesn't count the user's seat",
+          s7["status"] == "done" and s7["branch"] == "killer-goal/x" and len(s7["commits"]) == 1
+          and s7["commits"][0].endswith("Plan: tighten the rollout steps") and s7["numbers"]["agents"] == 2, s7)
 finally:
     shutil.rmtree(tmp, ignore_errors=True)
 
